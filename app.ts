@@ -7,10 +7,7 @@ import connection from './db/connection'
 const logger: P.Logger | undefined = P({ timestamp: () => `,"time":"${new Date().toJSON()}"` }, P.destination('./wa-logs.txt'))
 logger.level = 'trace'
 
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-})
+
 
 const socks: { [key: string]: ReturnType<typeof makeWASocket> } = {}
 
@@ -78,7 +75,11 @@ const startSock = async (userId: string, retryCount = 0) => {
 }
 
 startSock('user1')
-startSock('user2')
+
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+})
 
 const sendMessage = async (userId: string, number: string, message: string) => {
     const sock = socks[userId]
