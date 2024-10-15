@@ -12,14 +12,22 @@ logger.level = 'trace'
 const socks: { [key: string]: ReturnType<typeof makeWASocket> } = {}
 
 const startSock = async (userId: string, retryCount = 0) => {
-    const { state, saveCreds } = await useMultiFileAuthState(`baileys_auth_info_${userId}`)
+    const authDir = `baileys_auth_info_${userId}`
+    const authExists = fs.existsSync(authDir)
+
+    if (authExists) {
+        console.log(`Usuário ${userId} já está conectado.`)
+    } else {
+        console.log('Conectando no WhatsApp... por favor leia o QR code abaixo.')
+    }
+
+    const { state, saveCreds } = await useMultiFileAuthState(authDir)
     const { version, isLatest } = await fetchLatestBaileysVersion()
-    console.log(`Usando a versão do WhatsApp em v.${version.join('.')}, última versão: ${isLatest}`)
 
     const sock = makeWASocket({
         version,
         logger,
-        printQRInTerminal: true,
+        printQRInTerminal: !authExists,
         auth: {
             creds: state.creds,
             keys: state.keys,
@@ -32,7 +40,16 @@ const startSock = async (userId: string, retryCount = 0) => {
         async (events) => {
             if (events['connection.update']) {
                 const update = events['connection.update']
-                const { connection, lastDisconnect } = update
+                const { connection, qr, lastDisconnect } = update
+    
+                if (connection === 'connecting' && !authExists) {
+                    console.log('Conectando no WhatsApp... por favor leia o QR code abaixo.')
+                }
+    
+                if (qr) {
+                    console.log(`QR Code: ${qr}`)
+                }
+    
                 if (connection === 'close') {
                     const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
                     if (shouldReconnect && retryCount < 5) {
@@ -42,10 +59,8 @@ const startSock = async (userId: string, retryCount = 0) => {
                         console.log(`Conexão fechada para o usuário ${userId}, usuário deslogado ou limite de tentativas atingido`)
                     }
                 }
-
-                console.log(`Conexão atualizada para o usuário ${userId}`, update)
             }
-
+    
             if (events['creds.update']) {
                 await saveCreds()
             }
@@ -84,11 +99,10 @@ const startSock = async (userId: string, retryCount = 0) => {
                 if (!fs.existsSync(audioDir)) {
                     fs.mkdirSync(audioDir, { recursive: true })
                 }
-    
                 await fs.promises.writeFile(audioPath, audioBuffer)
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'audio', fromMe, userId, audioPath]
+                    [participant, message.key.fromMe, 'audio', userId, audioPath]
                 )
             }
         
@@ -102,20 +116,11 @@ const startSock = async (userId: string, retryCount = 0) => {
                 if (!fs.existsSync(imageDir)) {
                     fs.mkdirSync(imageDir, { recursive: true })
                 }
-    
                 await fs.promises.writeFile(imagePath, imageBuffer)
-    
-                console.log('Valores para inserção na tabela mensagens:', {
-                    participant,
-                    fromMe: message.key.fromMe,
-                    tipo: 'imagem',
-                    usuario_id: userId,
-                    midia_url: imagePath
-                })
     
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'imagem', fromMe, userId, imagePath]
+                    [participant, message.key.fromMe, 'imagem', userId, imagePath]
                 )
             }
         })
@@ -145,7 +150,6 @@ const sendImage = async (userId: string, number: string, imagePath: string, capt
     const sock = socks[userId]
     if (sock) {
         const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`
-        console.log(`Enviando imagem de ${userId} para ${number}: ${imagePath} com legenda: ${caption}`)
         const imageBuffer = fs.readFileSync(imagePath)
         await sock.sendMessage(formattedNumber, { image: imageBuffer, caption: caption })
         console.log(`Imagem enviada de ${userId} para ${number}: ${caption}`)
@@ -153,6 +157,26 @@ const sendImage = async (userId: string, number: string, imagePath: string, capt
         console.log(`Conexão não encontrada para o usuário ${userId}`)
     }
 }
+
+const sendAudio = async (userId: string, number: string, audioPath: string) => {
+    try {
+        const sock = socks[userId]
+        if (sock) {
+            const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`
+            const audioBuffer = fs.readFileSync(audioPath)
+            await sock.sendMessage(formattedNumber, { 
+                audio: { url: audioPath }, 
+                mimetype: 'audio/ogg' 
+            })
+            console.log(`Áudio enviado de ${userId} para ${number}`)
+        } else {
+            console.log(`Conexão não encontrada para o usuário ${userId}`)
+        }
+    } catch (error) {
+        console.error('Erro ao enviar áudio:', error)
+    }
+}
+
 
 rl.on('line', async (input) => {
     const [userId, number, ...messageParts] = input.split(' ')
@@ -163,15 +187,22 @@ rl.on('line', async (input) => {
             if (match) {
                 const imagePath = match[1]
                 const caption = match[2]
-                console.log(`Comando para enviar imagem recebido. Caminho: ${imagePath}, Legenda: ${caption}`)
                 await sendImage(userId, number, imagePath, caption)
             } else {
                 console.log('Formato inválido para envio de imagem. Use: <usuário> <número> img:<caminho_da_imagem> <legenda>')
+            }
+        } else if (message.startsWith('audio:')) {
+            const match = message.match(/^audio:(\S+)$/)
+            if (match) {
+                const audioPath = match[1]
+                await sendAudio(userId, number, audioPath)
+            } else {
+                console.log('Formato inválido para envio de áudio. Use: <usuário> <número> audio:<caminho_do_audio>')
             }
         } else {
             await sendMessage(userId, number, message)
         }
     } else {
-        console.log('Formato inválido. Use: <usuário> <número> <mensagem> ou <usuário> <número> img:<caminho_da_imagem> <legenda>')
+        console.log('Formato inválido. Use: <usuário> <número> <mensagem> ou <usuário> <número> img:<caminho_da_imagem> <legenda> ou <usuário> <número> audio:<caminho_do_audio>')
     }
 })
