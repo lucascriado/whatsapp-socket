@@ -166,7 +166,7 @@ const sendAudio = async (userId: string, number: string, audioPath: string) => {
             const audioBuffer = fs.readFileSync(audioPath)
             await sock.sendMessage(formattedNumber, { 
                 audio: { url: audioPath }, 
-                mimetype: 'audio/ogg' 
+                mimetype: 'audio/mp4' 
             })
             console.log(`Áudio enviado de ${userId} para ${number}`)
         } else {
@@ -176,7 +176,6 @@ const sendAudio = async (userId: string, number: string, audioPath: string) => {
         console.error('Erro ao enviar áudio:', error)
     }
 }
-
 
 rl.on('line', async (input) => {
     const [userId, number, ...messageParts] = input.split(' ')
