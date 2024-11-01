@@ -5,11 +5,16 @@ import readline from 'readline'
 import connection from './db/connection'
 import fs from 'fs'
 import path from 'path'
+import express from 'express';
+import multer from 'multer';
+import cors from 'cors';
+import QRCode from 'qrcode';
 
 const logger: P.Logger | undefined = P({ timestamp: () => `,"time":"${new Date().toJSON()}"` }, P.destination('./wa-logs.txt'))
 logger.level = 'trace'
 
 const socks: { [key: string]: ReturnType<typeof makeWASocket> } = {}
+let qrCode: string | null = null; // Variável global para armazenar o QR code
 
 const startSock = async (userId: string, retryCount = 0) => {
     const authDir = `baileys_auth_info_${userId}`
@@ -48,6 +53,7 @@ const startSock = async (userId: string, retryCount = 0) => {
     
                 if (qr) {
                     console.log(`QR Code: ${qr}`)
+                    qrCode = qr; // Atualiza a variável global com o QR code
                 }
     
                 if (connection === 'close') {
@@ -205,3 +211,76 @@ rl.on('line', async (input) => {
         console.log('Formato inválido. Use: <usuário> <número> <mensagem> ou <usuário> <número> img:<caminho_da_imagem> <legenda> ou <usuário> <número> audio:<caminho_do_audio>')
     }
 })
+
+const app = express();
+const upload = multer({ dest: 'uploads/' });
+
+app.use(cors());
+app.use(express.json());
+
+app.post('/connect', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        await startSock(userId);
+        res.status(200).send(`Conectado com sucesso para o usuário ${userId}`);
+    } catch (error) {
+        res.status(500).send(`Erro ao conectar para o usuário ${userId}`);
+    }
+});
+
+app.post('/sendMessage', async (req, res) => {
+    const { userId, number, message } = req.body;
+    try {
+        await sendMessage(userId, number, message);
+        res.status(200).send('Mensagem enviada com sucesso');
+    } catch (error) {
+        res.status(500).send('Erro ao enviar mensagem');
+    }
+});
+
+app.post('/sendImage', upload.single('image'), async (req, res) => {
+    const { userId, number, caption } = req.body;
+    const imagePath = req.file?.path;
+    try {
+        if (imagePath) {
+            await sendImage(userId, number, imagePath, caption);
+            res.status(200).send('Imagem enviada com sucesso');
+        } else {
+            res.status(400).send('Imagem não encontrada');
+        }
+    } catch (error) {
+        res.status(500).send('Erro ao enviar imagem');
+    }
+});
+
+app.post('/sendAudio', upload.single('audio'), async (req, res) => {
+    const { userId, number } = req.body;
+    const audioPath = req.file?.path;
+    try {
+        if (audioPath) {
+            await sendAudio(userId, number, audioPath);
+            res.status(200).send('Áudio enviado com sucesso');
+        } else {
+            res.status(400).send('Áudio não encontrado');
+        }
+    } catch (error) {
+        res.status(500).send('Erro ao enviar áudio');
+    }
+});
+
+app.get('/generate-qrcode', async (req, res) => {
+    try {
+        if (qrCode) {
+            const qrCodeUrl = await QRCode.toDataURL(qrCode);
+            res.json({ qrCodeUrl });
+        } else {
+            res.status(404).json({ error: 'QR code não encontrado' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: 'Falha ao gerar QR code' });
+    }
+});
+
+app.listen(3000, () => {
+    console.log('Servidor rodando na porta 3000');
+});
