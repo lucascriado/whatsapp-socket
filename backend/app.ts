@@ -53,7 +53,7 @@ const startSock = async (userId: string, retryCount = 0) => {
     
                 if (qr) {
                     console.log(`QR Code: ${qr}`)
-                    qrCode = qr; // Atualiza a variável global com o QR code
+                    qrCode = qr;
                 }
     
                 if (connection === 'close') {
@@ -141,47 +141,53 @@ const rl = readline.createInterface({
     output: process.stdout
 })
 
-const sendMessage = async (userId: string, number: string, message: string) => {
-    const sock = socks[userId]
-    if (sock) {
-        const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`
-        await sock.sendMessage(formattedNumber, { text: message })
-        console.log(`Mensagem enviada de ${userId} para ${number}: ${message}`)
-    } else {
-        console.log(`Conexão não encontrada para o usuário ${userId}`)
+const ensureConnection = async (userId: string) => {
+    const sock = socks[userId];
+    if (!sock) {
+        await startSock(userId);
     }
-}
+};
+
+const sendMessage = async (userId: string, number: string, message: string) => {
+    await ensureConnection(userId);
+    const sock = socks[userId];
+    if (sock) {
+        const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
+        await sock.sendMessage(formattedNumber, { text: message });
+        console.log(`Mensagem enviada de ${userId} para ${number}: ${message}`);
+    } else {
+        console.log(`Conexão não encontrada para o usuário ${userId}`);
+    }
+};
 
 const sendImage = async (userId: string, number: string, imagePath: string, caption: string) => {
-    const sock = socks[userId]
+    await ensureConnection(userId);
+    const sock = socks[userId];
     if (sock) {
-        const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`
-        const imageBuffer = fs.readFileSync(imagePath)
-        await sock.sendMessage(formattedNumber, { image: imageBuffer, caption: caption })
-        console.log(`Imagem enviada de ${userId} para ${number}: ${caption}`)
+        const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
+        const imageBuffer = fs.readFileSync(imagePath);
+        await sock.sendMessage(formattedNumber, { image: imageBuffer, caption: caption });
+        console.log(`Imagem enviada de ${userId} para ${number}: ${caption}`);
     } else {
-        console.log(`Conexão não encontrada para o usuário ${userId}`)
+        console.log(`Conexão não encontrada para o usuário ${userId}`);
     }
-}
+};
 
 const sendAudio = async (userId: string, number: string, audioPath: string) => {
-    try {
-        const sock = socks[userId]
-        if (sock) {
-            const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`
-            const audioBuffer = fs.readFileSync(audioPath)
-            await sock.sendMessage(formattedNumber, { 
-                audio: { url: audioPath }, 
-                mimetype: 'audio/mp4' 
-            })
-            console.log(`Áudio enviado de ${userId} para ${number}`)
-        } else {
-            console.log(`Conexão não encontrada para o usuário ${userId}`)
-        }
-    } catch (error) {
-        console.error('Erro ao enviar áudio:', error)
+    await ensureConnection(userId);
+    const sock = socks[userId];
+    if (sock) {
+        const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
+        const audioBuffer = fs.readFileSync(audioPath);
+        await sock.sendMessage(formattedNumber, { 
+            audio: { url: audioPath }, 
+            mimetype: 'audio/mp4' 
+        });
+        console.log(`Áudio enviado de ${userId} para ${number}`);
+    } else {
+        console.log(`Conexão não encontrada para o usuário ${userId}`);
     }
-}
+};
 
 rl.on('line', async (input) => {
     const [userId, number, ...messageParts] = input.split(' ')

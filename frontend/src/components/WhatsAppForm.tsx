@@ -1,23 +1,27 @@
-import React, { useState } from 'react';
-import { connectUser, sendMessage, sendImage, sendAudio } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { fetchQRCode, sendMessage, sendImage, sendAudio } from '../services/api';
 
 const WhatsAppForm: React.FC = () => {
-    const [userId, setUserId] = useState('');
+    const [userId] = useState('user1'); // Defina o userId fixo ou obtenha de outra forma
     const [number, setNumber] = useState('');
     const [message, setMessage] = useState('');
     const [imagePath, setImagePath] = useState('');
     const [caption, setCaption] = useState('');
     const [audioPath, setAudioPath] = useState('');
+    const [qrCode, setQrCode] = useState('');
 
-    const handleConnect = async () => {
-        try {
-            await connectUser(userId);
-            alert('Conectado com sucesso!');
-        } catch (error) {
-            console.error('Erro ao conectar:', error);
-            alert('Erro ao conectar');
-        }
-    };
+    useEffect(() => {
+        const getQRCode = async () => {
+            try {
+                const response = await fetchQRCode();
+                setQrCode(response.data.qrCode);
+            } catch (error) {
+                console.error('Erro ao obter QR code:', error);
+            }
+        };
+
+        getQRCode();
+    }, []);
 
     const handleSendMessage = async () => {
         try {
@@ -51,14 +55,12 @@ const WhatsAppForm: React.FC = () => {
 
     return (
         <div style={{ padding: '20px', maxWidth: '400px', margin: 'auto' }}>
-            <h2>Conectar ao WhatsApp</h2>
-            <input
-                type="text"
-                placeholder="User ID"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-            />
-            <button onClick={handleConnect}>Conectar</button>
+            <h2>Escaneie o QR Code para conectar ao WhatsApp</h2>
+            {qrCode ? (
+                <img src={qrCode} alt="QR Code" />
+            ) : (
+                <p>Carregando QR Code...</p>
+            )}
 
             <h3>Enviar Mensagem</h3>
             <input
@@ -67,8 +69,7 @@ const WhatsAppForm: React.FC = () => {
                 value={number}
                 onChange={(e) => setNumber(e.target.value)}
             />
-            <input
-                type="text"
+            <textarea
                 placeholder="Mensagem"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
