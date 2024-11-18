@@ -202,21 +202,16 @@ const saveImageWithHash = async (imagePath: string, userId: string, conn: any, e
         fs.mkdirSync(imageDir, { recursive: true });
     }
 
-    // Verificar se a imagem já existe no diretório
-    if (!fs.existsSync(newPath)) {
-        fs.copyFileSync(imagePath, newPath);
-        console.log('Nova imagem salva em:', newPath);
+    fs.copyFileSync(imagePath, newPath);
+    console.log('Nova imagem salva em:', newPath);
 
-        // Inserir no banco de dados apenas se a imagem foi copiada
-        await conn.execute(
-            'INSERT INTO imagens (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
-            [userId, imageHash, newPath]
-        );
-    } else {
-        console.log('Imagem já existe no diretório, reutilizando caminho:', newPath);
-    }
+    // Inserir no banco de dados
+    await conn.execute(
+        'INSERT INTO imagens (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
+        [userId, imageHash, `path/images/${imageHash}${extension}`]
+    );
 
-    return newPath;
+    return `path/images/${imageHash}${extension}`;
 };
 
 const sendImage = async (userId: string, number: string, imagePath: string, caption: string) => {
@@ -225,9 +220,11 @@ const sendImage = async (userId: string, number: string, imagePath: string, capt
     if (sock) {
         const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
         const conn = await connection;
-        const extension = path.extname(imagePath) || '.jpg'; // Define a extensão padrão como .jpg se não houver extensão
+        const extension = path.extname(imagePath) || '.jpg';
         const newPath = await saveImageWithHash(imagePath, userId, conn, extension);
-        const imageBuffer = fs.readFileSync(newPath);
+        const absolutePath = path.join(__dirname, newPath);
+
+        const imageBuffer = fs.readFileSync(absolutePath);
         await sock.sendMessage(formattedNumber, { image: imageBuffer, caption: caption });
         console.log(`Imagem enviada de ${userId} para ${number}: ${caption}`);
     } else {
@@ -305,6 +302,9 @@ const upload = multer({ dest: 'uploads/' });
 app.use(cors());
 app.use(express.json());
 
+// Servir arquivos estáticos da pasta "path/images"
+app.use('', express.static(path.join(__dirname, 'path', 'images')));
+
 app.post('/connect', async (req, res) => {
     const { userId } = req.body;
     try {
@@ -356,6 +356,19 @@ app.post('/sendAudio', upload.single('audio'), async (req, res) => {
     }
 });
 
+app.get('/numbers', async (req, res) => {
+    const conn = await connection;
+    try {
+        const [rows] = await conn.query(
+            'SELECT DISTINCT participante FROM mensagens'
+        ) as any[];
+        res.json(rows.map((row: any) => row.participante));
+    } catch (error) {
+        console.error('Erro ao buscar números:', error);
+        res.status(500).send('Erro ao buscar números');
+    }
+});
+
 app.get('/generate-qrcode', async (req, res) => {
     try {
         if (qrCode) {
@@ -366,6 +379,21 @@ app.get('/generate-qrcode', async (req, res) => {
         }
     } catch (error) {
         res.status(500).json({ error: 'Falha ao gerar QR code' });
+    }
+});
+
+app.get('/messages/:number', async (req, res) => {
+    const { number } = req.params;
+    const conn = await connection;
+    try {
+        const [messages] = await conn.query(
+            'SELECT * FROM mensagens WHERE participante = ? OR participante = ? ORDER BY data ASC',
+            [number, `${number}@s.whatsapp.net`]
+        );
+        res.json(messages);
+    } catch (error) {
+        console.error('Erro ao buscar mensagens:', error);
+        res.status(500).send('Erro ao buscar mensagens');
     }
 });
 
