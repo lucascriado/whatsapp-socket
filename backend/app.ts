@@ -208,10 +208,45 @@ const saveImageWithHash = async (imagePath: string, userId: string, conn: any, e
     // Inserir no banco de dados
     await conn.execute(
         'INSERT INTO imagens (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
-        [userId, imageHash, `path/images/${imageHash}${extension}`]
+        [userId, imageHash, `images/${imageHash}${extension}`]
     );
 
-    return `path/images/${imageHash}${extension}`;
+    return `images/${imageHash}${extension}`;
+};
+
+const saveAudioWithHash = async (audioPath: string, userId: string, conn: any, extension: string): Promise<string> => {
+    const audioHash = calculateSHA1(audioPath);
+
+    // Verificar se já existe um áudio com o mesmo hash no banco de dados
+    const [existingAudios] = await conn.query(
+        'SELECT midia_url FROM audios WHERE hash = ? AND usuario_id = ?',
+        [audioHash, userId]
+    );
+
+    if (existingAudios.length > 0) {
+        const existingAudio = existingAudios[0];
+        console.log('Áudio já existe, reutilizando caminho:', existingAudio.midia_url);
+        return existingAudio.midia_url;
+    }
+
+    // Salva o novo áudio e o hash
+    const audioDir = path.join(__dirname, 'path', 'audios');
+    const newPath = path.join(audioDir, `${audioHash}${extension}`);
+
+    if (!fs.existsSync(audioDir)) {
+        fs.mkdirSync(audioDir, { recursive: true });
+    }
+
+    fs.copyFileSync(audioPath, newPath);
+    console.log('Novo áudio salvo em:', newPath);
+
+    // Inserir no banco de dados
+    await conn.execute(
+        'INSERT INTO audios (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
+        [userId, audioHash, `audios/${audioHash}${extension}`]
+    );
+
+    return `audios/${audioHash}${extension}`;
 };
 
 const sendImage = async (userId: string, number: string, imagePath: string, caption: string) => {
@@ -222,7 +257,7 @@ const sendImage = async (userId: string, number: string, imagePath: string, capt
         const conn = await connection;
         const extension = path.extname(imagePath) || '.jpg';
         const newPath = await saveImageWithHash(imagePath, userId, conn, extension);
-        const absolutePath = path.join(__dirname, newPath);
+        const absolutePath = path.join(__dirname, 'path', newPath);
 
         const imageBuffer = fs.readFileSync(absolutePath);
         await sock.sendMessage(formattedNumber, { image: imageBuffer, caption: caption });
@@ -231,6 +266,7 @@ const sendImage = async (userId: string, number: string, imagePath: string, capt
         console.log(`Conexão não encontrada para o usuário ${userId}`);
     }
 };
+
 
 const ensureConnection = async (userId: string) => {
     const sock = socks[userId];
@@ -256,9 +292,14 @@ const sendAudio = async (userId: string, number: string, audioPath: string) => {
     const sock = socks[userId];
     if (sock) {
         const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
-        const audioBuffer = fs.readFileSync(audioPath);
+        const conn = await connection;
+        const extension = path.extname(audioPath) || '.ogg';
+        const newPath = await saveAudioWithHash(audioPath, userId, conn, extension);
+        const absolutePath = path.join(__dirname, 'path', newPath);
+
+        const audioBuffer = fs.readFileSync(absolutePath);
         await sock.sendMessage(formattedNumber, { 
-            audio: { url: audioPath }, 
+            audio: audioBuffer, 
             mimetype: 'audio/mp4' 
         });
         console.log(`Áudio enviado de ${userId} para ${number}`);
