@@ -9,12 +9,29 @@ import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
 import QRCode from 'qrcode';
+import crypto from 'crypto';
+import { Server } from 'ws';
 
 const logger: P.Logger | undefined = P({ timestamp: () => `,"time":"${new Date().toJSON()}"` }, P.destination('./wa-logs.txt'))
 logger.level = 'trace'
 
 const socks: { [key: string]: ReturnType<typeof makeWASocket> } = {}
 let qrCode: string | null = null; // Variável global para armazenar o QR code
+
+// Crie um servidor WebSocket
+const wss = new Server({ port: 8080 });
+
+wss.on('connection', (ws) => {
+    console.log('Cliente conectado ao WebSocket');
+});
+
+const notifyConnectionStatus = (userId: string, status: string) => {
+    wss.clients.forEach((client) => {
+        if (client.readyState === client.OPEN) {
+            client.send(JSON.stringify({ userId, status }));
+        }
+    });
+};
 
 const startSock = async (userId: string, retryCount = 0) => {
     const authDir = `baileys_auth_info_${userId}`
@@ -55,6 +72,12 @@ const startSock = async (userId: string, retryCount = 0) => {
                     console.log(`QR Code: ${qr}`)
                     qrCode = qr;
                 }
+
+                if (connection === 'open') {
+                    console.log(`Conexão estabelecida para o usuário ${userId}`)
+                    qrCode = null; // Limpa o QR code quando a conexão é estabelecida
+                    notifyConnectionStatus(userId, 'connected'); // Notifica o frontend
+                }
     
                 if (connection === 'close') {
                     const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
@@ -63,6 +86,7 @@ const startSock = async (userId: string, retryCount = 0) => {
                         setTimeout(() => startSock(userId, retryCount + 1), 5000)
                     } else {
                         console.log(`Conexão fechada para o usuário ${userId}, usuário deslogado ou limite de tentativas atingido`)
+                        notifyConnectionStatus(userId, 'disconnected'); // Notifica o frontend
                     }
                 }
             }
@@ -98,10 +122,10 @@ const startSock = async (userId: string, retryCount = 0) => {
             if (audio) {
                 const audioBuffer = await downloadMediaMessage(message, 'buffer', {  })
                 console.log(`${fromMe}: Áudio recebido`)
-    
+
                 const audioDir = path.join(__dirname, 'path', 'audios')
                 const audioPath = path.join(audioDir, message.key.id + '.ogg')
-    
+
                 if (!fs.existsSync(audioDir)) {
                     fs.mkdirSync(audioDir, { recursive: true })
                 }
@@ -113,21 +137,27 @@ const startSock = async (userId: string, retryCount = 0) => {
             }
         
             if (image) {
-                const imageBuffer = await downloadMediaMessage(message, 'buffer', {  })
-                console.log(`${fromMe}: Imagem recebida`)
+                const imageBuffer = await downloadMediaMessage(message, 'buffer', {  });
+                console.log(`${fromMe}: Imagem recebida`);
                 
-                const imageDir = path.join(__dirname, 'path', 'images')
-                const imagePath = path.join(imageDir, message.key.id + '.jpg')
-    
+                const imageDir = path.join(__dirname, 'path', 'images');
+                const tempImagePath = path.join(imageDir, message.key.id + '.jpg');
+
                 if (!fs.existsSync(imageDir)) {
-                    fs.mkdirSync(imageDir, { recursive: true })
+                    fs.mkdirSync(imageDir, { recursive: true });
                 }
-                await fs.promises.writeFile(imagePath, imageBuffer)
-    
+                await fs.promises.writeFile(tempImagePath, imageBuffer);
+
+                const extension = '.jpg'; // Defina a extensão correta aqui
+                const newPath = await saveImageWithHash(tempImagePath, userId, conn, extension);
+
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'imagem', userId, imagePath]
-                )
+                    [participant, message.key.fromMe, 'imagem', userId, newPath]
+                );
+
+                // Remover o arquivo temporário
+                fs.unlinkSync(tempImagePath);
             }
         })
     })     
@@ -140,6 +170,70 @@ const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 })
+
+// Função para calcular o SHA-1 de um arquivo
+const calculateSHA1 = (filePath: string): string => {
+    const fileBuffer = fs.readFileSync(filePath);
+    const hashSum = crypto.createHash('sha1');
+    hashSum.update(fileBuffer);
+    return hashSum.digest('hex');
+};
+
+const saveImageWithHash = async (imagePath: string, userId: string, conn: any, extension: string): Promise<string> => {
+    const imageHash = calculateSHA1(imagePath);
+
+    // Verificar se já existe uma imagem com o mesmo hash no banco de dados
+    const [existingImages] = await conn.query(
+        'SELECT midia_url FROM imagens WHERE hash = ? AND usuario_id = ?',
+        [imageHash, userId]
+    );
+
+    if (existingImages.length > 0) {
+        const existingImage = existingImages[0];
+        console.log('Imagem já existe, reutilizando caminho:', existingImage.midia_url);
+        return existingImage.midia_url;
+    }
+
+    // Salva a nova imagem e o hash
+    const imageDir = path.join(__dirname, 'path', 'images');
+    const newPath = path.join(imageDir, `${imageHash}${extension}`);
+
+    if (!fs.existsSync(imageDir)) {
+        fs.mkdirSync(imageDir, { recursive: true });
+    }
+
+    // Verificar se a imagem já existe no diretório
+    if (!fs.existsSync(newPath)) {
+        fs.copyFileSync(imagePath, newPath);
+        console.log('Nova imagem salva em:', newPath);
+
+        // Inserir no banco de dados apenas se a imagem foi copiada
+        await conn.execute(
+            'INSERT INTO imagens (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
+            [userId, imageHash, newPath]
+        );
+    } else {
+        console.log('Imagem já existe no diretório, reutilizando caminho:', newPath);
+    }
+
+    return newPath;
+};
+
+const sendImage = async (userId: string, number: string, imagePath: string, caption: string) => {
+    await ensureConnection(userId);
+    const sock = socks[userId];
+    if (sock) {
+        const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
+        const conn = await connection;
+        const extension = path.extname(imagePath) || '.jpg'; // Define a extensão padrão como .jpg se não houver extensão
+        const newPath = await saveImageWithHash(imagePath, userId, conn, extension);
+        const imageBuffer = fs.readFileSync(newPath);
+        await sock.sendMessage(formattedNumber, { image: imageBuffer, caption: caption });
+        console.log(`Imagem enviada de ${userId} para ${number}: ${caption}`);
+    } else {
+        console.log(`Conexão não encontrada para o usuário ${userId}`);
+    }
+};
 
 const ensureConnection = async (userId: string) => {
     const sock = socks[userId];
@@ -155,19 +249,6 @@ const sendMessage = async (userId: string, number: string, message: string) => {
         const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
         await sock.sendMessage(formattedNumber, { text: message });
         console.log(`Mensagem enviada de ${userId} para ${number}: ${message}`);
-    } else {
-        console.log(`Conexão não encontrada para o usuário ${userId}`);
-    }
-};
-
-const sendImage = async (userId: string, number: string, imagePath: string, caption: string) => {
-    await ensureConnection(userId);
-    const sock = socks[userId];
-    if (sock) {
-        const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
-        const imageBuffer = fs.readFileSync(imagePath);
-        await sock.sendMessage(formattedNumber, { image: imageBuffer, caption: caption });
-        console.log(`Imagem enviada de ${userId} para ${number}: ${caption}`);
     } else {
         console.log(`Conexão não encontrada para o usuário ${userId}`);
     }
@@ -255,6 +336,7 @@ app.post('/sendImage', upload.single('image'), async (req, res) => {
             res.status(400).send('Imagem não encontrada');
         }
     } catch (error) {
+        console.error('Erro ao enviar imagem:', error);
         res.status(500).send('Erro ao enviar imagem');
     }
 });

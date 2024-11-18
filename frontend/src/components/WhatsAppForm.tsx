@@ -1,14 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { fetchQRCode, sendMessage, sendImage, sendAudio } from '../services/api';
 
 const WhatsAppForm: React.FC = () => {
-    const [userId] = useState('user1'); // Defina o userId fixo ou obtenha de outra forma
+    const [userId] = useState('user1');
     const [number, setNumber] = useState('');
     const [message, setMessage] = useState('');
-    const [imagePath, setImagePath] = useState('');
+    const [imageFile, setImageFile] = useState<File | null>(null);
     const [caption, setCaption] = useState('');
-    const [audioPath, setAudioPath] = useState('');
+    const [audioFile, setAudioFile] = useState<File | null>(null);
     const [qrCode, setQrCode] = useState('');
+    const [isConnected, setIsConnected] = useState(false);
+
+    const imageInputRef = useRef<HTMLInputElement>(null);
+    const audioInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         const getQRCode = async () => {
@@ -21,12 +25,28 @@ const WhatsAppForm: React.FC = () => {
         };
 
         getQRCode();
-    }, []);
+
+        // Conectar ao WebSocket
+        const ws = new WebSocket('ws://localhost:8080');
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.userId === userId && data.status === 'connected') {
+                setIsConnected(true);
+                setQrCode('');
+            }
+        };
+
+        return () => {
+            ws.close();
+        };
+    }, [userId]);
 
     const handleSendMessage = async () => {
         try {
             await sendMessage(userId, number, message);
             alert('Mensagem enviada!');
+            setMessage('');
+            setIsConnected(true);
         } catch (error) {
             console.error('Erro ao enviar mensagem:', error);
             alert('Erro ao enviar mensagem');
@@ -34,9 +54,21 @@ const WhatsAppForm: React.FC = () => {
     };
 
     const handleSendImage = async () => {
+        if (!imageFile) return;
         try {
-            await sendImage(userId, number, imagePath, caption);
+            const formData = new FormData();
+            formData.append('userId', userId);
+            formData.append('number', number);
+            formData.append('image', imageFile);
+            formData.append('caption', caption);
+            await sendImage(formData);
             alert('Imagem enviada!');
+            setImageFile(null);
+            setCaption('');
+            setIsConnected(true);
+            if (imageInputRef.current) {
+                imageInputRef.current.value = '';
+            }
         } catch (error) {
             console.error('Erro ao enviar imagem:', error);
             alert('Erro ao enviar imagem');
@@ -44,9 +76,19 @@ const WhatsAppForm: React.FC = () => {
     };
 
     const handleSendAudio = async () => {
+        if (!audioFile) return;
         try {
-            await sendAudio(userId, number, audioPath);
+            const formData = new FormData();
+            formData.append('userId', userId);
+            formData.append('number', number);
+            formData.append('audio', audioFile);
+            await sendAudio(formData);
             alert('Áudio enviado!');
+            setAudioFile(null);
+            setIsConnected(true);
+            if (audioInputRef.current) {
+                audioInputRef.current.value = '';
+            }
         } catch (error) {
             console.error('Erro ao enviar áudio:', error);
             alert('Erro ao enviar áudio');
@@ -56,49 +98,36 @@ const WhatsAppForm: React.FC = () => {
     return (
         <div style={{ padding: '20px', maxWidth: '400px', margin: 'auto' }}>
             <h2>Escaneie o QR Code para conectar ao WhatsApp</h2>
-            {qrCode ? (
+            {!isConnected && qrCode ? (
                 <img src={qrCode} alt="QR Code" />
             ) : (
-                <p>Carregando QR Code...</p>
+                <p>Conectado com sucesso!</p>
             )}
-
-            <h3>Enviar Mensagem</h3>
-            <input
-                type="text"
-                placeholder="Número"
-                value={number}
-                onChange={(e) => setNumber(e.target.value)}
-            />
-            <textarea
-                placeholder="Mensagem"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-            />
-            <button onClick={handleSendMessage}>Enviar Mensagem</button>
-
-            <h3>Enviar Imagem</h3>
-            <input
-                type="text"
-                placeholder="Caminho da Imagem"
-                value={imagePath}
-                onChange={(e) => setImagePath(e.target.value)}
-            />
-            <input
-                type="text"
-                placeholder="Legenda"
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-            />
-            <button onClick={handleSendImage}>Enviar Imagem</button>
-
-            <h3>Enviar Áudio</h3>
-            <input
-                type="text"
-                placeholder="Caminho do Áudio"
-                value={audioPath}
-                onChange={(e) => setAudioPath(e.target.value)}
-            />
-            <button onClick={handleSendAudio}>Enviar Áudio</button>
+            <form>
+                <div>
+                    <label>Número:</label>
+                    <input type="text" value={number} onChange={(e) => setNumber(e.target.value)} />
+                </div>
+                <div>
+                    <label>Mensagem:</label>
+                    <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} />
+                </div>
+                <button type="button" onClick={handleSendMessage}>Enviar Mensagem</button>
+                <div>
+                    <label>Imagem:</label>
+                    <input type="file" ref={imageInputRef} onChange={(e) => setImageFile(e.target.files ? e.target.files[0] : null)} />
+                </div>
+                <div>
+                    <label>Legenda:</label>
+                    <input type="text" value={caption} onChange={(e) => setCaption(e.target.value)} />
+                </div>
+                <button type="button" onClick={handleSendImage}>Enviar Imagem</button>
+                <div>
+                    <label>Áudio:</label>
+                    <input type="file" ref={audioInputRef} onChange={(e) => setAudioFile(e.target.files ? e.target.files[0] : null)} />
+                </div>
+                <button type="button" onClick={handleSendAudio}>Enviar Áudio</button>
+            </form>
         </div>
     );
 };
