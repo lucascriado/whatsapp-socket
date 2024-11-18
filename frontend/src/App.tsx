@@ -1,13 +1,17 @@
-import React from 'react';
-import WhatsAppForm from './components/WhatsAppForm';
+import React, { useState } from 'react';
+import ChatList from './components/ChatList';
+import ChatWindow from './components/ChatWindow';
 import QRCodeDisplay from './components/QRCodeDisplay';
+import './App.css';
 
 const App: React.FC = () => {
+    const [selectedNumber, setSelectedNumber] = useState<string | null>(null);
+
     return (
-        <div>
-            <h1>WhatsApp Interface</h1>
+        <div className="app">
             <QRCodeDisplay />
-            <WhatsAppForm />
+            <ChatList onSelectNumber={setSelectedNumber} />
+            {selectedNumber && <ChatWindow number={selectedNumber} />}
         </div>
     );
 };
