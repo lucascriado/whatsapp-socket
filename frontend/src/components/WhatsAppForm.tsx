@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchQRCode, sendMessage, sendImage, sendAudio } from '../services/api';
 
-const WhatsAppForm: React.FC = () => {
+interface WhatsAppFormProps {
+    number: string;
+}
+
+const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number }) => {
     const [userId] = useState('user1');
-    const [number, setNumber] = useState('');
     const [message, setMessage] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [caption, setCaption] = useState('');
@@ -104,10 +107,6 @@ const WhatsAppForm: React.FC = () => {
                 <p>Conectado com sucesso!</p>
             )}
             <form>
-                <div>
-                    <label>Número:</label>
-                    <input type="text" value={number} onChange={(e) => setNumber(e.target.value)} />
-                </div>
                 <div>
                     <label>Mensagem:</label>
                     <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} />
