@@ -74,6 +74,7 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number }) => {
             }
         } catch (error) {
             console.error('Erro ao enviar imagem:', error);
+            console.error('Detalhes do erro:', (error as any).response?.data);
             alert('Erro ao enviar imagem');
         }
     };
@@ -99,33 +100,49 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number }) => {
     };
 
     return (
-        <div style={{ padding: '20px', maxWidth: '400px', margin: 'auto' }}>
-            <h2>Escaneie o QR Code para conectar ao WhatsApp</h2>
-            {!isConnected && qrCode ? (
-                <img src={qrCode} alt="QR Code" />
-            ) : (
-                <p>Conectado com sucesso!</p>
-            )}
-            <form>
-                <div>
-                    <label>Mensagem:</label>
-                    <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} />
+        <div className="p-4">
+            <form className="flex flex-col space-y-4">
+                <div className="flex items-center space-x-2">
+                    <input
+                        type="text"
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        placeholder="Digite uma mensagem"
+                        className="flex-1 p-2 border rounded"
+                    />
+                    <button type="button" onClick={handleSendMessage} className="p-2 bg-blue-500 text-white rounded">
+                        Enviar
+                    </button>
                 </div>
-                <button type="button" onClick={handleSendMessage}>Enviar Mensagem</button>
-                <div>
-                    <label>Imagem:</label>
-                    <input type="file" ref={imageInputRef} onChange={(e) => setImageFile(e.target.files ? e.target.files[0] : null)} />
+                <div className="flex items-center space-x-2">
+                    <input
+                        type="file"
+                        ref={imageInputRef}
+                        onChange={(e) => setImageFile(e.target.files ? e.target.files[0] : null)}
+                        className="flex-1"
+                    />
+                    <input
+                        type="text"
+                        value={caption}
+                        onChange={(e) => setCaption(e.target.value)}
+                        placeholder="Legenda"
+                        className="flex-1 p-2 border rounded"
+                    />
+                    <button type="button" onClick={handleSendImage} className="p-2 bg-blue-500 text-white rounded">
+                        Enviar Imagem
+                    </button>
                 </div>
-                <div>
-                    <label>Legenda:</label>
-                    <input type="text" value={caption} onChange={(e) => setCaption(e.target.value)} />
+                <div className="flex items-center space-x-2">
+                    <input
+                        type="file"
+                        ref={audioInputRef}
+                        onChange={(e) => setAudioFile(e.target.files ? e.target.files[0] : null)}
+                        className="flex-1"
+                    />
+                    <button type="button" onClick={handleSendAudio} className="p-2 bg-blue-500 text-white rounded">
+                        Enviar Áudio
+                    </button>
                 </div>
-                <button type="button" onClick={handleSendImage}>Enviar Imagem</button>
-                <div>
-                    <label>Áudio:</label>
-                    <input type="file" ref={audioInputRef} onChange={(e) => setAudioFile(e.target.files ? e.target.files[0] : null)} />
-                </div>
-                <button type="button" onClick={handleSendAudio}>Enviar Áudio</button>
             </form>
         </div>
     );

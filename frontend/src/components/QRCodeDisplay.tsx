@@ -18,9 +18,9 @@ const QRCodeDisplay: React.FC = () => {
     }, []);
 
     return (
-        <div>
-            <h1>QR Code</h1>
-            {qrCodeUrl ? <img src={qrCodeUrl} alt="QR Code" /> : <p>Loading...</p>}
+        <div className="p-4">
+            <h1 className="text-xl font-bold mb-4">QR Code</h1>
+            {qrCodeUrl ? <img src={qrCodeUrl} alt="QR Code" className="mx-auto" /> : <p>Loading...</p>}
         </div>
     );
 };

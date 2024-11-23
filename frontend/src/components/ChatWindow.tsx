@@ -23,16 +23,16 @@ const ChatWindow: React.FC<{ number: string }> = ({ number }) => {
     }, [number]);
 
     return (
-        <div className="chat-window">
-            <div className="messages">
+        <div className="flex flex-col h-full">
+            <div className="flex-1 overflow-y-auto">
                 {messages.map((message) => (
-                    <div key={message.id} className={`message ${message.voce ? 'sent' : 'received'}`}>
+                    <div key={message.id} className={`p-2 my-2 rounded ${message.voce ? 'bg-green-200 self-end' : 'bg-gray-200 self-start'}`}>
                         {message.tipo === 'enviada' || message.tipo === 'recebida' ? (
                             <p>{message.texto}</p>
                         ) : message.tipo === 'imagem' ? (
                             <img src={`http://localhost:3000/${message.midia_url}`} alt="Imagem" />
                         ) : message.tipo === 'audio' ? (
-                            <audio controls src={`http://localhost:3000/${message.midia_url}`} />
+                            <audio controls src={`http://localhost:3000/${message.midia_url}`} className="w-full" />
                         ) : null}
                     </div>
                 ))}
