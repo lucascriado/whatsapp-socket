@@ -33,6 +33,14 @@ const notifyConnectionStatus = (userId: string, status: string) => {
     });
 };
 
+const notifyQRCodeCleared = () => {
+    wss.clients.forEach((client) => {
+        if (client.readyState === client.OPEN) {
+            client.send(JSON.stringify({ event: 'qrCodeCleared' }));
+        }
+    });
+};
+
 const startSock = async (userId: string, retryCount = 0) => {
     const authDir = `baileys_auth_info_${userId}`
     const authExists = fs.existsSync(authDir)
@@ -73,9 +81,11 @@ const startSock = async (userId: string, retryCount = 0) => {
                     qrCode = qr;
                 }
 
+                // Modifique a parte onde a conexão é estabelecida para limpar o QR code
                 if (connection === 'open') {
-                    console.log(`Conexão estabelecida para o usuário ${userId}`)
+                    console.log(`Conexão estabelecida para o usuário ${userId}`);
                     qrCode = null; // Limpa o QR code quando a conexão é estabelecida
+                    notifyQRCodeCleared(); // Notifica o frontend
                     notifyConnectionStatus(userId, 'connected'); // Notifica o frontend
                 }
     
