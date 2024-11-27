@@ -285,6 +285,7 @@ const sendImage = async (userId: string, number: string, imagePath: string, capt
         console.log(`Imagem enviada de ${userId} para ${number}`);
     } else {
         console.log(`Conexão não encontrada para o usuário ${userId}`);
+        throw new Error(`Conexão não encontrada para o usuário ${userId}`);
     }
 };
 
@@ -389,14 +390,17 @@ app.post('/sendMessage', async (req, res) => {
 });
 
 app.post('/sendImage', upload.single('image'), async (req, res) => {
-    console.log('Arquivo recebido:', req.file);
+    console.log('Arquivo recebido:', req.file?.filename);
     console.log('Dados recebidos:', req.body);
     const { userId, number, caption } = req.body;
     const imagePath = req.file?.path;
     try {
         if (imagePath) {
             await sendImage(userId, number, imagePath, caption);
-            res.status(200).send('Imagem enviada com sucesso');
+            res.status(200).json({
+                success: true,
+                midia_url: `images/${path.basename(imagePath)}`,
+            });
         } else {
             res.status(400).send('Imagem não encontrada');
         }
