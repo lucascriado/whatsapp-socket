@@ -33,6 +33,14 @@ const notifyConnectionStatus = (userId: string, status: string) => {
     });
 };
 
+const notifyQRCodeCleared = () => {
+    wss.clients.forEach((client) => {
+        if (client.readyState === client.OPEN) {
+            client.send(JSON.stringify({ event: 'qrCodeCleared' }));
+        }
+    });
+};
+
 const startSock = async (userId: string, retryCount = 0) => {
     const authDir = `baileys_auth_info_${userId}`
     const authExists = fs.existsSync(authDir)
@@ -73,9 +81,11 @@ const startSock = async (userId: string, retryCount = 0) => {
                     qrCode = qr;
                 }
 
+                // Modifique a parte onde a conexão é estabelecida para limpar o QR code
                 if (connection === 'open') {
-                    console.log(`Conexão estabelecida para o usuário ${userId}`)
+                    console.log(`Conexão estabelecida para o usuário ${userId}`);
                     qrCode = null; // Limpa o QR code quando a conexão é estabelecida
+                    notifyQRCodeCleared(); // Notifica o frontend
                     notifyConnectionStatus(userId, 'connected'); // Notifica o frontend
                 }
     
@@ -100,68 +110,67 @@ const startSock = async (userId: string, retryCount = 0) => {
     sock.ev.on('creds.update', saveCreds)
 
     sock.ev.on('messages.upsert', async (msg) => {
-        const conn = await connection
+        const conn = await connection;
+    
         msg.messages.forEach(async message => {
-            const participant = message.key.participant?.replace('@s.whatsapp.net', '') || message.key.remoteJid?.replace('@s.whatsapp.net', '') || 'desconhecido'
-            const fromMe = message.key.fromMe ? 'enviada' : 'recebida'
-        
-            const text = message.message?.conversation || message.message?.extendedTextMessage?.text
-        
-            const audio = message.message?.audioMessage
-        
-            const image = message.message?.imageMessage
-        
+            const participant = message.key.participant?.replace('@s.whatsapp.net', '') || message.key.remoteJid?.replace('@s.whatsapp.net', '') || 'desconhecido';
+            const fromMe = message.key.fromMe ? 'enviada' : 'recebida';
+            const text = message.message?.conversation || message.message?.extendedTextMessage?.text;
+            const audio = message.message?.audioMessage;
+            const image = message.message?.imageMessage;
+    
             if (text) {
-                console.log(`${fromMe}: ${text}`)
+                console.log(`${fromMe}: ${text}`);
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, texto, tipo, usuario_id) VALUES (?, ?, ?, ?, ?)',
                     [participant, message.key.fromMe, text, fromMe, userId]
-                )
+                );
             }
-        
+    
             if (audio) {
-                const audioBuffer = await downloadMediaMessage(message, 'buffer', {  })
-                console.log(`${fromMe}: Áudio recebido`)
-
-                const audioDir = path.join(__dirname, 'path', 'audios')
-                const audioPath = path.join(audioDir, message.key.id + '.ogg')
-
+                const audioBuffer = await downloadMediaMessage(message, 'buffer', {});
+                const audioDir = path.join(__dirname, 'path', 'audios');
+                const audioPath = path.join(audioDir, message.key.id + '.ogg');
+    
                 if (!fs.existsSync(audioDir)) {
-                    fs.mkdirSync(audioDir, { recursive: true })
+                    fs.mkdirSync(audioDir, { recursive: true });
                 }
-                await fs.promises.writeFile(audioPath, audioBuffer)
+                await fs.promises.writeFile(audioPath, audioBuffer);
+    
+                const relativeAudioPath = `audios/${message.key.id}.ogg`; // Caminho relativo
+    
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'audio', userId, audioPath]
-                )
+                    [participant, message.key.fromMe, 'audio', userId, relativeAudioPath]
+                );
             }
-        
+    
             if (image) {
-                const imageBuffer = await downloadMediaMessage(message, 'buffer', {  });
-                console.log(`${fromMe}: Imagem recebida`);
-                
+                const imageBuffer = await downloadMediaMessage(message, 'buffer', {});
                 const imageDir = path.join(__dirname, 'path', 'images');
-                const tempImagePath = path.join(imageDir, message.key.id + '.jpg');
-
+                const imagePath = path.join(imageDir, message.key.id + '.jpg');
+    
                 if (!fs.existsSync(imageDir)) {
                     fs.mkdirSync(imageDir, { recursive: true });
                 }
-                await fs.promises.writeFile(tempImagePath, imageBuffer);
-
-                const extension = '.jpg'; // Defina a extensão correta aqui
-                const newPath = await saveImageWithHash(tempImagePath, userId, conn, extension);
-
+                await fs.promises.writeFile(imagePath, imageBuffer);
+    
+                const relativeImagePath = `images/${message.key.id}.jpg`; // Caminho relativo
+    
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'imagem', userId, newPath]
+                    [participant, message.key.fromMe, 'imagem', userId, relativeImagePath]
                 );
-
-                // Remover o arquivo temporário
-                fs.unlinkSync(tempImagePath);
             }
-        })
-    })     
-    return sock
+    
+            // Enviar mensagem via WebSocket
+            wss.clients.forEach((client) => {
+                if (client.readyState === client.OPEN) {
+                    client.send(JSON.stringify({ event: 'newMessage', message }));
+                }
+            });
+        });
+    });
 }
 
 startSock('user1')
@@ -179,6 +188,7 @@ const calculateSHA1 = (filePath: string): string => {
     return hashSum.digest('hex');
 };
 
+// Função para salvar imagem com hash
 const saveImageWithHash = async (imagePath: string, userId: string, conn: any, extension: string): Promise<string> => {
     const imageHash = calculateSHA1(imagePath);
 
@@ -197,6 +207,7 @@ const saveImageWithHash = async (imagePath: string, userId: string, conn: any, e
     // Salva a nova imagem e o hash
     const imageDir = path.join(__dirname, 'path', 'images');
     const newPath = path.join(imageDir, `${imageHash}${extension}`);
+    const relativePath = `images/${imageHash}${extension}`;
 
     if (!fs.existsSync(imageDir)) {
         fs.mkdirSync(imageDir, { recursive: true });
@@ -208,12 +219,13 @@ const saveImageWithHash = async (imagePath: string, userId: string, conn: any, e
     // Inserir no banco de dados
     await conn.execute(
         'INSERT INTO imagens (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
-        [userId, imageHash, `images/${imageHash}${extension}`]
+        [userId, imageHash, relativePath]
     );
 
-    return `images/${imageHash}${extension}`;
+    return relativePath;
 };
 
+// Função para salvar áudio com hash
 const saveAudioWithHash = async (audioPath: string, userId: string, conn: any, extension: string): Promise<string> => {
     const audioHash = calculateSHA1(audioPath);
 
@@ -232,6 +244,7 @@ const saveAudioWithHash = async (audioPath: string, userId: string, conn: any, e
     // Salva o novo áudio e o hash
     const audioDir = path.join(__dirname, 'path', 'audios');
     const newPath = path.join(audioDir, `${audioHash}${extension}`);
+    const relativePath = `audios/${audioHash}${extension}`;
 
     if (!fs.existsSync(audioDir)) {
         fs.mkdirSync(audioDir, { recursive: true });
@@ -243,10 +256,10 @@ const saveAudioWithHash = async (audioPath: string, userId: string, conn: any, e
     // Inserir no banco de dados
     await conn.execute(
         'INSERT INTO audios (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
-        [userId, audioHash, `audios/${audioHash}${extension}`]
+        [userId, audioHash, relativePath]
     );
 
-    return `audios/${audioHash}${extension}`;
+    return relativePath;
 };
 
 const sendImage = async (userId: string, number: string, imagePath: string, caption: string) => {
@@ -259,11 +272,14 @@ const sendImage = async (userId: string, number: string, imagePath: string, capt
         const newPath = await saveImageWithHash(imagePath, userId, conn, extension);
         const absolutePath = path.join(__dirname, 'path', newPath);
 
+        console.log(`Enviando imagem de ${userId} para ${number}, caminho absoluto ${absolutePath}`);
+
         const imageBuffer = fs.readFileSync(absolutePath);
         await sock.sendMessage(formattedNumber, { image: imageBuffer, caption: caption });
-        console.log(`Imagem enviada de ${userId} para ${number}: ${caption}`);
+        console.log(`Imagem enviada de ${userId} para ${number}`);
     } else {
         console.log(`Conexão não encontrada para o usuário ${userId}`);
+        throw new Error(`Conexão não encontrada para o usuário ${userId}`);
     }
 };
 
@@ -295,9 +311,9 @@ const sendAudio = async (userId: string, number: string, audioPath: string) => {
         const conn = await connection;
         const extension = path.extname(audioPath) || '.ogg';
         const newPath = await saveAudioWithHash(audioPath, userId, conn, extension);
-        const absolutePath = path.join(__dirname, 'path', newPath);
+        const relativePath = `audios/${path.basename(newPath)}`; // Ajuste para garantir que o caminho relativo seja usado
 
-        const audioBuffer = fs.readFileSync(absolutePath);
+        const audioBuffer = fs.readFileSync(path.join(__dirname, 'path', relativePath));
         await sock.sendMessage(formattedNumber, { 
             audio: audioBuffer, 
             mimetype: 'audio/mp4' 
@@ -344,7 +360,8 @@ app.use(cors());
 app.use(express.json());
 
 // Servir arquivos estáticos da pasta "path/images"
-app.use('', express.static(path.join(__dirname, 'path', 'images')));
+app.use('/images', express.static(path.join(__dirname, 'path', 'images')));
+app.use('/audios', express.static(path.join(__dirname, 'path', 'audios')));
 
 app.post('/connect', async (req, res) => {
     const { userId } = req.body;
@@ -367,12 +384,17 @@ app.post('/sendMessage', async (req, res) => {
 });
 
 app.post('/sendImage', upload.single('image'), async (req, res) => {
+    console.log('Arquivo recebido:', req.file?.filename);
+    console.log('Dados recebidos:', req.body);
     const { userId, number, caption } = req.body;
     const imagePath = req.file?.path;
     try {
         if (imagePath) {
             await sendImage(userId, number, imagePath, caption);
-            res.status(200).send('Imagem enviada com sucesso');
+            res.status(200).json({
+                success: true,
+                midia_url: `images/${path.basename(imagePath)}`,
+            });
         } else {
             res.status(400).send('Imagem não encontrada');
         }

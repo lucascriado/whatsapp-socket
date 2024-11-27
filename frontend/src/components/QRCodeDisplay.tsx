@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchQRCode } from '../services/api'; // Ajuste o caminho conforme necessário
+import { fetchQRCode } from '../services/api';
 
 const QRCodeDisplay: React.FC = () => {
     const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
@@ -15,12 +15,25 @@ const QRCodeDisplay: React.FC = () => {
         };
 
         getQRCode();
+
+        // Conectar ao WebSocket
+        const ws = new WebSocket('ws://localhost:8080');
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message.event === 'qrCodeCleared') {
+                setQrCodeUrl(null); // Limpa o QR code quando receber a notificação
+            }
+        };
+
+        return () => {
+            ws.close();
+        };
     }, []);
 
     return (
-        <div>
-            <h1>QR Code</h1>
-            {qrCodeUrl ? <img src={qrCodeUrl} alt="QR Code" /> : <p>Loading...</p>}
+        <div className="p-4">
+            <h1 className="text-xl font-bold mb-4">QR Code</h1>
+            {qrCodeUrl ? <img src={qrCodeUrl} alt="QR Code" className="mx-auto" /> : <p>Usuário Conectado!</p>}
         </div>
     );
 };
