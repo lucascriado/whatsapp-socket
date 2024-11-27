@@ -26,7 +26,7 @@ const ChatWindow: React.FC<{ number: string }> = ({ number }) => {
             const data = JSON.parse(event.data);
             console.log('Mensagem recebida via WebSocket:', data); // Log para depuração
             if (data.event === 'newMessage' && (data.message.key.remoteJid === number || data.message.key.remoteJid === `${number}@s.whatsapp.net`)) {
-                setMessages((prevMessages) => [...prevMessages, data.message]);
+                fetchMessages(number, setMessages);
             }
         };
 
@@ -47,7 +47,7 @@ const ChatWindow: React.FC<{ number: string }> = ({ number }) => {
                     const audioUrl = message.tipo === 'audio' ? `http://localhost:3000/${message.midia_url}` : null;
 
                     return (
-                        <div key={message.id || index} className={`p-2 my-2 rounded ${fromMe ? 'bg-green-200 self-end' : 'bg-gray-200 self-start'}`}>
+                        <div key={`${message.id}-${index}`} className={`p-2 my-2 rounded ${fromMe ? 'bg-green-200 self-end' : 'bg-gray-200 self-start'}`}>
                             {text ? (
                                 <p>{text}</p>
                             ) : imageUrl ? (

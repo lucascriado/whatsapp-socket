@@ -48,12 +48,12 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
     const handleSendMessage = async () => {
         try {
             await sendMessage(userId, number, message);
-            alert('Mensagem enviada!');
+            // alert('Mensagem enviada!');
             setMessage('');
             setIsConnected(true);
         } catch (error) {
             console.error('Erro ao enviar mensagem:', error);
-            alert('Erro ao enviar mensagem');
+            // alert('Erro ao enviar mensagem');
         }
     };
 
@@ -67,7 +67,7 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
             formData.append('caption', caption);
     
             const response = await sendImage(formData); // Supondo que retorne detalhes da mensagem
-            alert('Imagem enviada!');
+            // alert('Imagem enviada!');
             setImageFile(null);
             setCaption('');
             setIsConnected(true);
@@ -87,7 +87,7 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
             fetchMessages();
         } catch (error) {
             console.error('Erro ao enviar imagem:', error);
-            alert('Erro ao enviar imagem');
+            // alert('Erro ao enviar imagem');
         }
     };
 
@@ -100,7 +100,7 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
             formData.append('audio', audioFile);
 
             const response = await sendAudio(formData); // Supondo que retorne detalhes da mensagem
-            alert('Áudio enviado!');
+            // alert('Áudio enviado!');
             setAudioFile(null);
             setIsConnected(true);
 
@@ -119,7 +119,7 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
             fetchMessages();
         } catch (error) {
             console.error('Erro ao enviar áudio:', error);
-            alert('Erro ao enviar áudio');
+            // alert('Erro ao enviar áudio');
         }
     };
 

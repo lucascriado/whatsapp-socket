@@ -129,8 +129,6 @@ const startSock = async (userId: string, retryCount = 0) => {
     
             if (audio) {
                 const audioBuffer = await downloadMediaMessage(message, 'buffer', {});
-                console.log(`${fromMe}: Áudio recebido`);
-    
                 const audioDir = path.join(__dirname, 'path', 'audios');
                 const audioPath = path.join(audioDir, message.key.id + '.ogg');
     
@@ -149,26 +147,20 @@ const startSock = async (userId: string, retryCount = 0) => {
     
             if (image) {
                 const imageBuffer = await downloadMediaMessage(message, 'buffer', {});
-                console.log(`${fromMe}: Imagem recebida`);
-    
                 const imageDir = path.join(__dirname, 'path', 'images');
-                const tempImagePath = path.join(imageDir, message.key.id + '.jpg');
+                const imagePath = path.join(imageDir, message.key.id + '.jpg');
     
                 if (!fs.existsSync(imageDir)) {
                     fs.mkdirSync(imageDir, { recursive: true });
                 }
-                await fs.promises.writeFile(tempImagePath, imageBuffer);
+                await fs.promises.writeFile(imagePath, imageBuffer);
     
-                const extension = '.jpg'; // Defina a extensão correta aqui
-                const newPath = await saveImageWithHash(tempImagePath, userId, conn, extension);
+                const relativeImagePath = `images/${message.key.id}.jpg`; // Caminho relativo
     
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'imagem', userId, newPath]
+                    [participant, message.key.fromMe, 'imagem', userId, relativeImagePath]
                 );
-    
-                // Remover o arquivo temporário
-                fs.unlinkSync(tempImagePath);
             }
     
             // Enviar mensagem via WebSocket
@@ -196,42 +188,7 @@ const calculateSHA1 = (filePath: string): string => {
     return hashSum.digest('hex');
 };
 
-const saveAudioWithHash = async (audioPath: string, userId: string, conn: any, extension: string): Promise<string> => {
-    const audioHash = calculateSHA1(audioPath);
-
-    // Verificar se já existe um áudio com o mesmo hash no banco de dados
-    const [existingAudios] = await conn.query(
-        'SELECT midia_url FROM audios WHERE hash = ? AND usuario_id = ?',
-        [audioHash, userId]
-    );
-
-    if (existingAudios.length > 0) {
-        const existingAudio = existingAudios[0];
-        console.log('Áudio já existe, reutilizando caminho:', existingAudio.midia_url);
-        return existingAudio.midia_url;
-    }
-
-    // Salva o novo áudio e o hash
-    const audioDir = path.join(__dirname, 'path', 'audios');
-    const newPath = path.join(audioDir, `${audioHash}${extension}`);
-    const relativePath = `audios/${audioHash}${extension}`;
-
-    if (!fs.existsSync(audioDir)) {
-        fs.mkdirSync(audioDir, { recursive: true });
-    }
-
-    fs.copyFileSync(audioPath, newPath);
-    console.log('Novo áudio salvo em:', newPath);
-
-    // Inserir no banco de dados
-    await conn.execute(
-        'INSERT INTO audios (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
-        [userId, audioHash, relativePath]
-    );
-
-    return relativePath;
-};
-
+// Função para salvar imagem com hash
 const saveImageWithHash = async (imagePath: string, userId: string, conn: any, extension: string): Promise<string> => {
     const imageHash = calculateSHA1(imagePath);
 
@@ -263,6 +220,43 @@ const saveImageWithHash = async (imagePath: string, userId: string, conn: any, e
     await conn.execute(
         'INSERT INTO imagens (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
         [userId, imageHash, relativePath]
+    );
+
+    return relativePath;
+};
+
+// Função para salvar áudio com hash
+const saveAudioWithHash = async (audioPath: string, userId: string, conn: any, extension: string): Promise<string> => {
+    const audioHash = calculateSHA1(audioPath);
+
+    // Verificar se já existe um áudio com o mesmo hash no banco de dados
+    const [existingAudios] = await conn.query(
+        'SELECT midia_url FROM audios WHERE hash = ? AND usuario_id = ?',
+        [audioHash, userId]
+    );
+
+    if (existingAudios.length > 0) {
+        const existingAudio = existingAudios[0];
+        console.log('Áudio já existe, reutilizando caminho:', existingAudio.midia_url);
+        return existingAudio.midia_url;
+    }
+
+    // Salva o novo áudio e o hash
+    const audioDir = path.join(__dirname, 'path', 'audios');
+    const newPath = path.join(audioDir, `${audioHash}${extension}`);
+    const relativePath = `audios/${audioHash}${extension}`;
+
+    if (!fs.existsSync(audioDir)) {
+        fs.mkdirSync(audioDir, { recursive: true });
+    }
+
+    fs.copyFileSync(audioPath, newPath);
+    console.log('Novo áudio salvo em:', newPath);
+
+    // Inserir no banco de dados
+    await conn.execute(
+        'INSERT INTO audios (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
+        [userId, audioHash, relativePath]
     );
 
     return relativePath;
