@@ -110,71 +110,75 @@ const startSock = async (userId: string, retryCount = 0) => {
     sock.ev.on('creds.update', saveCreds)
 
     sock.ev.on('messages.upsert', async (msg) => {
-        const conn = await connection
+        const conn = await connection;
+    
         msg.messages.forEach(async message => {
-            const participant = message.key.participant?.replace('@s.whatsapp.net', '') || message.key.remoteJid?.replace('@s.whatsapp.net', '') || 'desconhecido'
-            const fromMe = message.key.fromMe ? 'enviada' : 'recebida'
-        
-            const text = message.message?.conversation || message.message?.extendedTextMessage?.text
-        
-            const audio = message.message?.audioMessage
-        
-            const image = message.message?.imageMessage
-        
+            const participant = message.key.participant?.replace('@s.whatsapp.net', '') || message.key.remoteJid?.replace('@s.whatsapp.net', '') || 'desconhecido';
+            const fromMe = message.key.fromMe ? 'enviada' : 'recebida';
+            const text = message.message?.conversation || message.message?.extendedTextMessage?.text;
+            const audio = message.message?.audioMessage;
+            const image = message.message?.imageMessage;
+    
             if (text) {
-                console.log(`${fromMe}: ${text}`)
+                console.log(`${fromMe}: ${text}`);
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, texto, tipo, usuario_id) VALUES (?, ?, ?, ?, ?)',
                     [participant, message.key.fromMe, text, fromMe, userId]
-                )
+                );
             }
-        
+    
             if (audio) {
-                const audioBuffer = await downloadMediaMessage(message, 'buffer', {  });
+                const audioBuffer = await downloadMediaMessage(message, 'buffer', {});
                 console.log(`${fromMe}: Áudio recebido`);
-            
+    
                 const audioDir = path.join(__dirname, 'path', 'audios');
                 const audioPath = path.join(audioDir, message.key.id + '.ogg');
-            
+    
                 if (!fs.existsSync(audioDir)) {
                     fs.mkdirSync(audioDir, { recursive: true });
                 }
                 await fs.promises.writeFile(audioPath, audioBuffer);
-            
+    
                 const relativeAudioPath = `audios/${message.key.id}.ogg`; // Caminho relativo
-            
+    
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
                     [participant, message.key.fromMe, 'audio', userId, relativeAudioPath]
                 );
             }
-        
+    
             if (image) {
-                const imageBuffer = await downloadMediaMessage(message, 'buffer', {  });
+                const imageBuffer = await downloadMediaMessage(message, 'buffer', {});
                 console.log(`${fromMe}: Imagem recebida`);
-                
+    
                 const imageDir = path.join(__dirname, 'path', 'images');
                 const tempImagePath = path.join(imageDir, message.key.id + '.jpg');
-
+    
                 if (!fs.existsSync(imageDir)) {
                     fs.mkdirSync(imageDir, { recursive: true });
                 }
                 await fs.promises.writeFile(tempImagePath, imageBuffer);
-
+    
                 const extension = '.jpg'; // Defina a extensão correta aqui
                 const newPath = await saveImageWithHash(tempImagePath, userId, conn, extension);
-
+    
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
                     [participant, message.key.fromMe, 'imagem', userId, newPath]
                 );
-
+    
                 // Remover o arquivo temporário
                 fs.unlinkSync(tempImagePath);
             }
-        })
-    })     
-    return sock
+    
+            // Enviar mensagem via WebSocket
+            wss.clients.forEach((client) => {
+                if (client.readyState === client.OPEN) {
+                    client.send(JSON.stringify({ event: 'newMessage', message }));
+                }
+            });
+        });
+    });
 }
 
 startSock('user1')
