@@ -7,7 +7,7 @@ interface WhatsAppFormProps {
 }
 
 const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) => {
-    const [userId] = useState('user1');
+    const [userId] = useState('3f68955c-99e8-4adb-9368-c3cbdd4fa54c');
     const [message, setMessage] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [caption, setCaption] = useState('');
@@ -30,7 +30,6 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
 
         getQRCode();
 
-        // Conectar ao WebSocket
         const ws = new WebSocket('ws://localhost:8080');
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
@@ -48,12 +47,10 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
     const handleSendMessage = async () => {
         try {
             await sendMessage(userId, number, message);
-            // alert('Mensagem enviada!');
             setMessage('');
             setIsConnected(true);
         } catch (error) {
             console.error('Erro ao enviar mensagem:', error);
-            // alert('Erro ao enviar mensagem');
         }
     };
 
@@ -66,13 +63,11 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
             formData.append('image', imageFile);
             formData.append('caption', caption);
     
-            const response = await sendImage(formData); // Supondo que retorne detalhes da mensagem
-            // alert('Imagem enviada!');
+            const response = await sendImage(formData);
             setImageFile(null);
             setCaption('');
             setIsConnected(true);
     
-            // Enviar evento WebSocket
             const ws = new WebSocket('ws://localhost:8080');
             ws.onopen = () => {
                 ws.send(JSON.stringify({ event: 'newMessage', message: response.data }));
@@ -83,11 +78,9 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
                 imageInputRef.current.value = '';
             }
 
-            // Atualizar mensagens
             fetchMessages();
         } catch (error) {
             console.error('Erro ao enviar imagem:', error);
-            // alert('Erro ao enviar imagem');
         }
     };
 
@@ -99,12 +92,10 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
             formData.append('number', number);
             formData.append('audio', audioFile);
 
-            const response = await sendAudio(formData); // Supondo que retorne detalhes da mensagem
-            // alert('Áudio enviado!');
+            const response = await sendAudio(formData);
             setAudioFile(null);
             setIsConnected(true);
 
-            // Enviar evento WebSocket
             const ws = new WebSocket('ws://localhost:8080');
             ws.onopen = () => {
                 ws.send(JSON.stringify({ event: 'newMessage', message: response.data }));
@@ -115,11 +106,9 @@ const WhatsAppForm: React.FC<WhatsAppFormProps> = ({ number, fetchMessages }) =>
                 audioInputRef.current.value = '';
             }
 
-            // Atualizar mensagens
             fetchMessages();
         } catch (error) {
             console.error('Erro ao enviar áudio:', error);
-            // alert('Erro ao enviar áudio');
         }
     };
 

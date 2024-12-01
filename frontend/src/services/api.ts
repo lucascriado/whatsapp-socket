@@ -21,6 +21,5 @@ export const sendAudio = (formData: FormData) =>
     });
 export const fetchQRCode = () => api.get('/generate-qrcode');
 
-// console.log para debugar
 console.log('API:', api);
 console.log(fetchQRCode);

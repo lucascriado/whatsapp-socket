@@ -6,7 +6,7 @@ export const fetchMessages = async (number: string, setMessages: React.Dispatch<
     try {
         const response = await axios.get(`http://localhost:3000/messages/${number}`);
         if (Array.isArray(response.data)) {
-            console.log('Mensagens recebidas:', response.data); // Log para depuração
+            console.log('Mensagens recebidas:', response.data);
             setMessages(response.data);
         } else {
             console.error('A resposta da API não é um array:', response.data);
@@ -20,11 +20,10 @@ const ChatWindow: React.FC<{ number: string }> = ({ number }) => {
     const [messages, setMessages] = useState<any[]>([]);
 
     useEffect(() => {
-        // Conectar ao WebSocket
         const ws = new WebSocket('ws://localhost:8080');
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            console.log('Mensagem recebida via WebSocket:', data); // Log para depuração
+            console.log('Mensagem recebida via WebSocket:', data);
             if (data.event === 'newMessage' && (data.message.key.remoteJid === number || data.message.key.remoteJid === `${number}@s.whatsapp.net`)) {
                 fetchMessages(number, setMessages);
             }

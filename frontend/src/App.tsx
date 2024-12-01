@@ -10,7 +10,7 @@ const App: React.FC = () => {
     return (
         <div className="flex flex-col h-screen">
             <div className="flex flex-row flex-1">
-                <div className="w-1/3 p-4 border-r">
+                <div className="p-4 border-r">
                     <QRCodeDisplay />
                     <ChatList onSelectNumber={setSelectedNumber} selectedNumber={selectedNumber} />
                 </div>

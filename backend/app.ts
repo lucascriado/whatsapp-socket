@@ -16,9 +16,8 @@ const logger: P.Logger | undefined = P({ timestamp: () => `,"time":"${new Date()
 logger.level = 'trace'
 
 const socks: { [key: string]: ReturnType<typeof makeWASocket> } = {}
-let qrCode: string | null = null; // Variável global para armazenar o QR code
+let qrCode: string | null = null;
 
-// Crie um servidor WebSocket
 const wss = new Server({ port: 8080 });
 
 wss.on('connection', (ws) => {
@@ -81,12 +80,11 @@ const startSock = async (userId: string, retryCount = 0) => {
                     qrCode = qr;
                 }
 
-                // Modifique a parte onde a conexão é estabelecida para limpar o QR code
                 if (connection === 'open') {
                     console.log(`Conexão estabelecida para o usuário ${userId}`);
-                    qrCode = null; // Limpa o QR code quando a conexão é estabelecida
-                    notifyQRCodeCleared(); // Notifica o frontend
-                    notifyConnectionStatus(userId, 'connected'); // Notifica o frontend
+                    qrCode = null;
+                    notifyQRCodeCleared();
+                    notifyConnectionStatus(userId, 'connected');
                 }
     
                 if (connection === 'close') {
@@ -96,7 +94,7 @@ const startSock = async (userId: string, retryCount = 0) => {
                         setTimeout(() => startSock(userId, retryCount + 1), 5000)
                     } else {
                         console.log(`Conexão fechada para o usuário ${userId}, usuário deslogado ou limite de tentativas atingido`)
-                        notifyConnectionStatus(userId, 'disconnected'); // Notifica o frontend
+                        notifyConnectionStatus(userId, 'disconnected');
                     }
                 }
             }
@@ -111,7 +109,6 @@ const startSock = async (userId: string, retryCount = 0) => {
 
     sock.ev.on('messages.upsert', async (msg) => {
         const conn = await connection;
-    
         msg.messages.forEach(async message => {
             const participant = message.key.participant?.replace('@s.whatsapp.net', '') || message.key.remoteJid?.replace('@s.whatsapp.net', '') || 'desconhecido';
             const fromMe = message.key.fromMe ? 'enviada' : 'recebida';
@@ -129,6 +126,8 @@ const startSock = async (userId: string, retryCount = 0) => {
     
             if (audio) {
                 const audioBuffer = await downloadMediaMessage(message, 'buffer', {});
+                console.log(`${fromMe}: Áudio recebido`);
+    
                 const audioDir = path.join(__dirname, 'path', 'audios');
                 const audioPath = path.join(audioDir, message.key.id + '.ogg');
     
@@ -137,7 +136,7 @@ const startSock = async (userId: string, retryCount = 0) => {
                 }
                 await fs.promises.writeFile(audioPath, audioBuffer);
     
-                const relativeAudioPath = `audios/${message.key.id}.ogg`; // Caminho relativo
+                const relativeAudioPath = `audios/${message.key.id}.ogg`;
     
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
@@ -147,23 +146,27 @@ const startSock = async (userId: string, retryCount = 0) => {
     
             if (image) {
                 const imageBuffer = await downloadMediaMessage(message, 'buffer', {});
+                console.log(`${fromMe}: Imagem recebida`);
+    
                 const imageDir = path.join(__dirname, 'path', 'images');
-                const imagePath = path.join(imageDir, message.key.id + '.jpg');
+                const tempImagePath = path.join(imageDir, message.key.id + '.jpg');
     
                 if (!fs.existsSync(imageDir)) {
                     fs.mkdirSync(imageDir, { recursive: true });
                 }
-                await fs.promises.writeFile(imagePath, imageBuffer);
+                await fs.promises.writeFile(tempImagePath, imageBuffer);
     
-                const relativeImagePath = `images/${message.key.id}.jpg`; // Caminho relativo
+                const extension = '.jpg';
+                const newPath = await saveImageWithHash(tempImagePath, userId, conn, extension);
     
                 await conn.execute(
                     'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'imagem', userId, relativeImagePath]
+                    [participant, message.key.fromMe, 'imagem', userId, newPath]
                 );
+    
+                fs.unlinkSync(tempImagePath);
             }
     
-            // Enviar mensagem via WebSocket
             wss.clients.forEach((client) => {
                 if (client.readyState === client.OPEN) {
                     client.send(JSON.stringify({ event: 'newMessage', message }));
@@ -171,16 +174,16 @@ const startSock = async (userId: string, retryCount = 0) => {
             });
         });
     });
+    return sock;
 }
 
-startSock('user1')
+startSock('3f68955c-99e8-4adb-9368-c3cbdd4fa54c')
 
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 })
 
-// Função para calcular o SHA-1 de um arquivo
 const calculateSHA1 = (filePath: string): string => {
     const fileBuffer = fs.readFileSync(filePath);
     const hashSum = crypto.createHash('sha1');
@@ -188,11 +191,9 @@ const calculateSHA1 = (filePath: string): string => {
     return hashSum.digest('hex');
 };
 
-// Função para salvar imagem com hash
 const saveImageWithHash = async (imagePath: string, userId: string, conn: any, extension: string): Promise<string> => {
     const imageHash = calculateSHA1(imagePath);
 
-    // Verificar se já existe uma imagem com o mesmo hash no banco de dados
     const [existingImages] = await conn.query(
         'SELECT midia_url FROM imagens WHERE hash = ? AND usuario_id = ?',
         [imageHash, userId]
@@ -204,7 +205,6 @@ const saveImageWithHash = async (imagePath: string, userId: string, conn: any, e
         return existingImage.midia_url;
     }
 
-    // Salva a nova imagem e o hash
     const imageDir = path.join(__dirname, 'path', 'images');
     const newPath = path.join(imageDir, `${imageHash}${extension}`);
     const relativePath = `images/${imageHash}${extension}`;
@@ -213,23 +213,20 @@ const saveImageWithHash = async (imagePath: string, userId: string, conn: any, e
         fs.mkdirSync(imageDir, { recursive: true });
     }
 
-    fs.copyFileSync(imagePath, newPath);
-    console.log('Nova imagem salva em:', newPath);
+        fs.copyFileSync(imagePath, newPath);
+        console.log('Nova imagem salva em:', newPath);
 
-    // Inserir no banco de dados
-    await conn.execute(
-        'INSERT INTO imagens (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
+        await conn.execute(
+            'INSERT INTO imagens (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
         [userId, imageHash, relativePath]
     );
 
     return relativePath;
 };
 
-// Função para salvar áudio com hash
 const saveAudioWithHash = async (audioPath: string, userId: string, conn: any, extension: string): Promise<string> => {
     const audioHash = calculateSHA1(audioPath);
 
-    // Verificar se já existe um áudio com o mesmo hash no banco de dados
     const [existingAudios] = await conn.query(
         'SELECT midia_url FROM audios WHERE hash = ? AND usuario_id = ?',
         [audioHash, userId]
@@ -241,7 +238,6 @@ const saveAudioWithHash = async (audioPath: string, userId: string, conn: any, e
         return existingAudio.midia_url;
     }
 
-    // Salva o novo áudio e o hash
     const audioDir = path.join(__dirname, 'path', 'audios');
     const newPath = path.join(audioDir, `${audioHash}${extension}`);
     const relativePath = `audios/${audioHash}${extension}`;
@@ -253,7 +249,6 @@ const saveAudioWithHash = async (audioPath: string, userId: string, conn: any, e
     fs.copyFileSync(audioPath, newPath);
     console.log('Novo áudio salvo em:', newPath);
 
-    // Inserir no banco de dados
     await conn.execute(
         'INSERT INTO audios (usuario_id, hash, midia_url) VALUES (?, ?, ?)',
         [userId, audioHash, relativePath]
@@ -311,7 +306,7 @@ const sendAudio = async (userId: string, number: string, audioPath: string) => {
         const conn = await connection;
         const extension = path.extname(audioPath) || '.ogg';
         const newPath = await saveAudioWithHash(audioPath, userId, conn, extension);
-        const relativePath = `audios/${path.basename(newPath)}`; // Ajuste para garantir que o caminho relativo seja usado
+        const relativePath = `audios/${path.basename(newPath)}`;
 
         const audioBuffer = fs.readFileSync(path.join(__dirname, 'path', relativePath));
         await sock.sendMessage(formattedNumber, { 
@@ -359,7 +354,6 @@ const upload = multer({ dest: 'uploads/' });
 app.use(cors());
 app.use(express.json());
 
-// Servir arquivos estáticos da pasta "path/images"
 app.use('/images', express.static(path.join(__dirname, 'path', 'images')));
 app.use('/audios', express.static(path.join(__dirname, 'path', 'audios')));
 
