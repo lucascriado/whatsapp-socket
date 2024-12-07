@@ -115,12 +115,13 @@ const startSock = async (userId: string, retryCount = 0) => {
             const text = message.message?.conversation || message.message?.extendedTextMessage?.text;
             const audio = message.message?.audioMessage;
             const image = message.message?.imageMessage;
+            const grupoId = message.key.remoteJid?.includes('@g.us') ? message.key.remoteJid : null;
     
             if (text) {
                 console.log(`${fromMe}: ${text}`);
                 await conn.execute(
-                    'INSERT INTO mensagens (participante, voce, texto, tipo, usuario_id) VALUES (?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, text, fromMe, userId]
+                    'INSERT INTO mensagens (participante, voce, texto, tipo, usuario_id, grupo_id) VALUES (?, ?, ?, ?, ?, ?)',
+                    [participant, message.key.fromMe, text, fromMe, userId, grupoId]
                 );
             }
     
@@ -139,8 +140,8 @@ const startSock = async (userId: string, retryCount = 0) => {
                 const relativeAudioPath = `audios/${message.key.id}.ogg`;
     
                 await conn.execute(
-                    'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'audio', userId, relativeAudioPath]
+                    'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url, grupo_id) VALUES (?, ?, ?, ?, ?, ?)',
+                    [participant, message.key.fromMe, 'audio', userId, relativeAudioPath, grupoId]
                 );
             }
     
@@ -160,8 +161,8 @@ const startSock = async (userId: string, retryCount = 0) => {
                 const newPath = await saveImageWithHash(tempImagePath, userId, conn, extension);
     
                 await conn.execute(
-                    'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url) VALUES (?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'imagem', userId, newPath]
+                    'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url, grupo_id) VALUES (?, ?, ?, ?, ?, ?)',
+                    [participant, message.key.fromMe, 'imagem', userId, newPath, grupoId]
                 );
     
                 fs.unlinkSync(tempImagePath);
@@ -261,17 +262,19 @@ const sendImage = async (userId: string, number: string, imagePath: string, capt
     await ensureConnection(userId);
     const sock = socks[userId];
     if (sock) {
-        const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
+        const formattedNumber = number.includes('@g.us') ? number : `${number}@s.whatsapp.net`;
         const conn = await connection;
         const extension = path.extname(imagePath) || '.jpg';
         const newPath = await saveImageWithHash(imagePath, userId, conn, extension);
         const absolutePath = path.join(__dirname, 'path', newPath);
 
-        console.log(`Enviando imagem de ${userId} para ${number}, caminho absoluto ${absolutePath}`);
-
         const imageBuffer = fs.readFileSync(absolutePath);
-        await sock.sendMessage(formattedNumber, { image: imageBuffer, caption: caption });
-        console.log(`Imagem enviada de ${userId} para ${number}`);
+        try {
+            await sock.sendMessage(formattedNumber, { image: imageBuffer, caption: caption });
+            console.log(`Imagem enviada de ${userId} para ${number}`);
+        } catch (error) {
+            console.error(`Erro ao enviar imagem de ${userId} para ${number}:`, error);
+        }
     } else {
         console.log(`Conexão não encontrada para o usuário ${userId}`);
         throw new Error(`Conexão não encontrada para o usuário ${userId}`);
@@ -290,9 +293,13 @@ const sendMessage = async (userId: string, number: string, message: string) => {
     await ensureConnection(userId);
     const sock = socks[userId];
     if (sock) {
-        const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
-        await sock.sendMessage(formattedNumber, { text: message });
-        console.log(`Mensagem enviada de ${userId} para ${number}: ${message}`);
+        const formattedNumber = number.includes('@g.us') ? number : `${number}@s.whatsapp.net`;
+        try {
+            await sock.sendMessage(formattedNumber, { text: message });
+            console.log(`Mensagem enviada de ${userId} para ${number}: ${message}`);
+        } catch (error) {
+            console.error(`Erro ao enviar mensagem de ${userId} para ${number}:`, error);
+        }
     } else {
         console.log(`Conexão não encontrada para o usuário ${userId}`);
     }
@@ -302,18 +309,22 @@ const sendAudio = async (userId: string, number: string, audioPath: string) => {
     await ensureConnection(userId);
     const sock = socks[userId];
     if (sock) {
-        const formattedNumber = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
+        const formattedNumber = number.includes('@g.us') ? number : `${number}@s.whatsapp.net`;
         const conn = await connection;
         const extension = path.extname(audioPath) || '.ogg';
         const newPath = await saveAudioWithHash(audioPath, userId, conn, extension);
         const relativePath = `audios/${path.basename(newPath)}`;
 
         const audioBuffer = fs.readFileSync(path.join(__dirname, 'path', relativePath));
-        await sock.sendMessage(formattedNumber, { 
-            audio: audioBuffer, 
-            mimetype: 'audio/mp4' 
-        });
-        console.log(`Áudio enviado de ${userId} para ${number}`);
+        try {
+            await sock.sendMessage(formattedNumber, { 
+                audio: audioBuffer, 
+                mimetype: 'audio/mp4' 
+            });
+            console.log(`Áudio enviado de ${userId} para ${number}`);
+        } catch (error) {
+            console.error(`Erro ao enviar áudio de ${userId} para ${number}:`, error);
+        }
     } else {
         console.log(`Conexão não encontrada para o usuário ${userId}`);
     }
@@ -387,7 +398,7 @@ app.post('/sendImage', upload.single('image'), async (req, res) => {
             await sendImage(userId, number, imagePath, caption);
             res.status(200).json({
                 success: true,
-                midia_url: `images/${path.basename(imagePath)}`,
+                message: 'Imagem enviada com sucesso'
             });
         } else {
             res.status(400).send('Imagem não encontrada');
@@ -409,6 +420,7 @@ app.post('/sendAudio', upload.single('audio'), async (req, res) => {
             res.status(400).send('Áudio não encontrado');
         }
     } catch (error) {
+        console.error('Erro ao enviar áudio:', error);
         res.status(500).send('Erro ao enviar áudio');
     }
 });
@@ -416,10 +428,14 @@ app.post('/sendAudio', upload.single('audio'), async (req, res) => {
 app.get('/numbers', async (req, res) => {
     const conn = await connection;
     try {
-        const [rows] = await conn.query(
-            'SELECT DISTINCT participante FROM mensagens'
-        ) as any[];
-        res.json(rows.map((row: any) => row.participante));
+        const [rows]: any[] = await conn.query(
+            'SELECT DISTINCT participante, grupo_id FROM mensagens'
+        );
+        const numbers = rows.map((row: any) => ({
+            participante: row.participante,
+            grupo_id: row.grupo_id
+        }));
+        res.json(numbers);
     } catch (error) {
         console.error('Erro ao buscar números:', error);
         res.status(500).send('Erro ao buscar números');
@@ -444,8 +460,8 @@ app.get('/messages/:number', async (req, res) => {
     const conn = await connection;
     try {
         const [messages] = await conn.query(
-            'SELECT * FROM mensagens WHERE participante = ? OR participante = ? ORDER BY data ASC',
-            [number, `${number}@s.whatsapp.net`]
+            'SELECT * FROM mensagens WHERE (participante = ? OR participante = ? OR grupo_id = ?) ORDER BY data ASC',
+            [number, `${number}@s.whatsapp.net`, number]
         );
         res.json(messages);
     } catch (error) {
