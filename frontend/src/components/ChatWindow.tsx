@@ -24,7 +24,7 @@ const ChatWindow: React.FC<{ number: string }> = ({ number }) => {
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             console.log('Mensagem recebida via WebSocket:', data);
-            if (data.event === 'newMessage' && (data.message.key.remoteJid === number || data.message.key.remoteJid === `${number}@s.whatsapp.net`)) {
+            if (data.event === 'newMessage' && (data.message.key.remoteJid === number || data.message.key.remoteJid === `${number}@s.whatsapp.net` || data.message.key.remoteJid === number)) {
                 fetchMessages(number, setMessages);
             }
         };
@@ -44,9 +44,12 @@ const ChatWindow: React.FC<{ number: string }> = ({ number }) => {
                     const text = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.text || message.texto;
                     const imageUrl = message.tipo === 'imagem' ? `http://localhost:3000/${message.midia_url}` : null;
                     const audioUrl = message.tipo === 'audio' ? `http://localhost:3000/${message.midia_url}` : null;
+                    const isGroup = message.grupo_id;
+                    const sender = isGroup ? `Grupo: ${message.participante}` : message.participante;
 
                     return (
                         <div key={`${message.id}-${index}`} className={`p-2 my-2 rounded ${fromMe ? 'bg-green-200 self-end' : 'bg-gray-200 self-start'}`}>
+                            <p className="text-xs text-gray-500">{sender}</p>
                             {text ? (
                                 <p>{text}</p>
                             ) : imageUrl ? (
