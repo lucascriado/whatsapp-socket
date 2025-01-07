@@ -33,6 +33,19 @@ const ChatList: React.FC<ChatListProps> = ({ onSelectNumber, selectedNumber }) =
 
     useEffect(() => {
         fetchNumbers();
+
+        const ws = new WebSocket('ws://localhost:8080');
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log('Mensagem recebida via WebSocket:', data);
+            if (data.event === 'newMessage') {
+                fetchNumbers();
+            }
+        };
+
+        return () => {
+            ws.close();
+        };
     }, []);
 
     const handleManualNumberSubmit = () => {

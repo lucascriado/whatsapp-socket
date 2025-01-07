@@ -457,16 +457,21 @@ app.get('/generate-qrcode', async (req, res) => {
 
 app.get('/messages/:number', async (req, res) => {
     const { number } = req.params;
+    console.log(number, "number")
     const conn = await connection;
-    try {
+
+    if (number.length <= 13 ) {
+        const [messages] = await conn.query(
+            'SELECT * FROM mensagens WHERE (participante = ? OR participante = ?) AND grupo_id IS NULL ORDER BY data ASC',
+            [number, `${number}@s.whatsapp.net`]
+        );
+        res.json(messages);
+    } else {
         const [messages] = await conn.query(
             'SELECT * FROM mensagens WHERE (participante = ? OR participante = ? OR grupo_id = ?) ORDER BY data ASC',
             [number, `${number}@s.whatsapp.net`, number]
         );
         res.json(messages);
-    } catch (error) {
-        console.error('Erro ao buscar mensagens:', error);
-        res.status(500).send('Erro ao buscar mensagens');
     }
 });
 
