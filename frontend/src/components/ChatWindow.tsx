@@ -37,8 +37,8 @@ const ChatWindow: React.FC<{ number: string }> = ({ number }) => {
     }, [number]);
 
     return (
-        <div className="flex flex-col h-full">
-            <div className="flex-1 overflow-y-auto">
+        <div className="">
+            <div className="">
                 {messages.map((message, index) => {
                     const fromMe = message.voce;
                     const text = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.text || message.texto;

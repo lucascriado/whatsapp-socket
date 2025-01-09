@@ -58,17 +58,6 @@ const ChatList: React.FC<ChatListProps> = ({ onSelectNumber, selectedNumber }) =
     return (
         <div>
             {error && <p className="text-red-500">{error}</p>}
-            <ul className="mb-4">
-                {contacts.map((contact) => (
-                    <li
-                        key={contact.grupo_id || contact.participante}
-                        className={`cursor-pointer p-2 hover:bg-gray-200 ${selectedNumber === (contact.grupo_id || contact.participante) ? 'bg-blue-200' : ''}`}
-                        onClick={() => onSelectNumber(contact.grupo_id || contact.participante)}
-                    >
-                        {contact.grupo_id ? `Grupo: ${contact.grupo_id}` : contact.participante}
-                    </li>
-                ))}
-            </ul>
             <div className="flex">
                 <input
                     type="text"
@@ -81,6 +70,17 @@ const ChatList: React.FC<ChatListProps> = ({ onSelectNumber, selectedNumber }) =
                     Adicionar Contato
                 </button>
             </div>
+            <ul className="mb-4">
+                {contacts.map((contact) => (
+                    <li
+                        key={contact.grupo_id || contact.participante}
+                        className={`cursor-pointer p-2 hover:bg-gray-200 ${selectedNumber === (contact.grupo_id || contact.participante) ? 'bg-blue-200' : ''}`}
+                        onClick={() => onSelectNumber(contact.grupo_id || contact.participante)}
+                    >
+                        {contact.grupo_id ? `Grupo: ${contact.grupo_id}` : contact.participante}
+                    </li>
+                ))}
+            </ul>
         </div>
     );
 };

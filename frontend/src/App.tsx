@@ -14,8 +14,12 @@ const App: React.FC = () => {
                     <QRCodeDisplay />
                     <ChatList onSelectNumber={setSelectedNumber} selectedNumber={selectedNumber} />
                 </div>
-                <div className="w-2/3 p-4">
-                    {selectedNumber && <ChatWindow number={selectedNumber} />}
+                <div className="w-[1200px] p-4 h-screen flex flex-col">
+                    {selectedNumber && (
+                        <div className="flex-1 overflow-y-scroll">
+                            <ChatWindow number={selectedNumber} />
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
