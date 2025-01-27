@@ -1,0 +1,6 @@
+{
+    "name": "whatsapp_socket/users_api",
+    "require": {
+        "ramsey/uuid": "^4.7"
+    }
+}

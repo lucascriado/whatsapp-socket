@@ -1,0 +1,12 @@
+CREATE DATABASE users_api;
+
+GRANT ALL PRIVILEGES ON users_api.* TO 'admin'@'localhost';
+FLUSH PRIVILEGES;
+
+USE users_api;
+
+CREATE TABLE users (
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    uuid VARCHAR(36) NOT NULL 
+);
