@@ -14,7 +14,7 @@ use Dotenv\Dotenv;
 $dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
-$PATH = dirname(__FILE__);
+$PATH = __DIR__;
 include("$PATH/config.php");
 
 $Servidor = new Server($Config['BIND'], $Config['DAEMONS'][6]['BACKUP_SQL']['PORT']);
@@ -23,16 +23,40 @@ $Servidor->set(
     [
         Constant::OPTION_HTTP_COMPRESSION       => true,
         Constant::OPTION_HTTP_COMPRESSION_LEVEL => 5,
-        Constant::OPTION_DOCUMENT_ROOT            => dirname(__DIR__),
-        Constant::OPTION_ENABLE_STATIC_HANDLER    => true,
-        Constant::OPTION_STATIC_HANDLER_LOCATIONS => [
-            '/clients',
-            '/servers',
-        ],
     ]
 );
 
-$Servidor->on('request', function (Request $Request, Response $Response) {
+function isAuthenticated($mysqli, $authToken) {
+    echo "[Auth Check] Verificando token: " . ($authToken ?: 'Nenhum token') . "\n";
+    
+    if (empty($authToken)) {
+        echo "[Auth Check] Token vazio - Acesso negado\n";
+        return false;
+    }
+
+    $authStmt = $mysqli->prepare("SELECT uuid FROM auth_users WHERE auth_token = ? LIMIT 1");
+    $authStmt->bind_param("s", $authToken);
+    $authStmt->execute();
+    $authStmt->store_result();
+
+    $isAuthenticated = $authStmt->num_rows > 0;
+    echo "[Auth Check] Resultado: " . ($isAuthenticated ? "Autenticado" : "Não autenticado") . "\n";
+    
+    $authStmt->close();
+    return $isAuthenticated;
+}
+
+function serveFile($filename, $response) {
+    if (file_exists($filename)) {
+        $contents = file_get_contents($filename);
+        $response->end($contents);
+    } else {
+        $response->status(404);
+        $response->end("File not found");
+    }
+}
+
+$Servidor->on('request', function (Request $Request, Response $Response) use ($PATH) {
     $mysqli = new mysqli($_ENV['DB_HOST'], $_ENV['DB_USER'], $_ENV['DB_PASS'], $_ENV['DB_NAME'], (int)$_ENV['DB_PORT']);
     if ($mysqli->connect_error) {
         $Response->status(500);
@@ -40,10 +64,49 @@ $Servidor->on('request', function (Request $Request, Response $Response) {
         return;
     }
 
-    switch($Request->server['request_uri']){
+    $Response->header('Access-Control-Allow-Origin', '*');
+    $Response->header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    $Response->header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if ($Request->server['request_method'] === 'OPTIONS') {
+        $Response->status(204);
+        $Response->end();
+        return;
+    }
+
+    $uri = $Request->server['request_uri'];
+
+    if ($uri === '/dashboard') {
+        echo "\n=== TENTATIVA DE ACESSO AO DASHBOARD ===\n";
+        echo "IP: " . $Request->server['remote_addr'] . "\n";
+        echo "Hora: " . date('Y-m-d H:i:s') . "\n";
+        
+        $authToken = $Request->cookie['auth_token'] ?? '';
+        
+        if (!isAuthenticated($mysqli, $authToken)) {
+            echo "ACESSO NEGADO - Token inválido ou ausente\n";
+            echo "=====================================\n\n";
+            $Response->status(401); 
+            $Response->end("Acesso não autorizado. Faça login primeiro.");
+            return;
+        }
+        
+        echo "ACESSO AUTORIZADO\n";
+        echo "=====================================\n\n";
+        serveFile("$PATH/dashboard.html", $Response);
+        return;
+    }
+
+    switch($uri){
         case '/user/register':
-            $username = $Request->post['username'] ?? '';
-            $password = $Request->post['password'] ?? '';
+            if ($Request->server['request_method'] === 'GET') {
+                serveFile("$PATH/register.html", $Response);
+                return;
+            }
+
+            $data = json_decode($Request->getContent(), true);
+            $username = $data['username'] ?? '';
+            $password = $data['password'] ?? '';
 
             if (empty($username) || empty($password)) {
                 $Response->status(400);
@@ -59,7 +122,8 @@ $Servidor->on('request', function (Request $Request, Response $Response) {
             try {
                 if ($stmt->execute()) {
                     $Response->status(201);
-                    $Response->end("User registered successfully.");
+                    $Response->header('Location', '/user/login');
+                    $Response->end("User registered successfully. Redirecting to login...");
                 } else {
                     $Response->status(500);
                     $Response->end("User registration failed: " . $stmt->error);
@@ -78,8 +142,14 @@ $Servidor->on('request', function (Request $Request, Response $Response) {
             break;
 
         case '/user/login':
-            $username = $Request->post['username'] ?? '';
-            $password = $Request->post['password'] ?? '';
+            if ($Request->server['request_method'] === 'GET') {
+                serveFile("$PATH/login.html", $Response);
+                return;
+            }
+
+            $data = json_decode($Request->getContent(), true);
+            $username = $data['username'] ?? '';
+            $password = $data['password'] ?? '';
 
             if (empty($username) || empty($password)) {
                 $Response->status(400);
@@ -103,8 +173,8 @@ $Servidor->on('request', function (Request $Request, Response $Response) {
                     $authStmt->execute();
                     $authStmt->close();
 
-                    $Response->status(200);
-                    $Response->end("Login successful. Auth Token: " . $authToken);
+                    $Response->cookie('auth_token', $authToken, time() + 3600, '/'); // Adiciona o cookie de autenticação
+                    $Response->status(200);                    
                 } else {
                     $Response->status(401);
                     $Response->end("Invalid username or password.");
@@ -118,7 +188,7 @@ $Servidor->on('request', function (Request $Request, Response $Response) {
             break;
 
         case '/protected':
-            $authToken = $Request->header['auth_token'] ?? '';
+            $authToken = $Request->cookie['auth_token'] ?? '';
 
             if (empty($authToken)) {
                 $Response->status(401);
@@ -126,16 +196,40 @@ $Servidor->on('request', function (Request $Request, Response $Response) {
                 return;
             }
 
-            $authStmt = $mysqli->prepare("SELECT uuid FROM auth_users WHERE auth_token = ?");
+            $authStmt = $mysqli->prepare("SELECT uuid FROM auth_users WHERE auth_token = ? LIMIT 1");
             $authStmt->bind_param("s", $authToken);
             $authStmt->execute();
             $authStmt->store_result();
 
-            if ($authStmt->num_rows > 0) {
-                $Response->status(200);
-                $Response->end("Welcome to the protected page!");
-            } else {
+            if ($authStmt->num_rows === 0) {
                 $Response->status(401);
+                $Response->end("Invalid auth token.");
+                $authStmt->close();
+                return;
+            }
+
+            $authStmt->close();
+            break;
+
+        case '/logout':
+            $authToken = $Request->cookie['auth_token'] ?? '';
+
+            if (empty($authToken)) {
+                $Response->status(400);
+                $Response->end("Auth token is required.");
+                return;
+            }
+
+            $authStmt = $mysqli->prepare("DELETE FROM auth_users WHERE auth_token = ?");
+            $authStmt->bind_param("s", $authToken);
+            $authStmt->execute();
+
+            if ($authStmt->affected_rows > 0) {
+                $Response->cookie('auth_token', '', time() - 3600, '/');
+                $Response->status(200);
+                $Response->end("Logout successful.");
+            } else {
+                $Response->status(400);
                 $Response->end("Invalid auth token.");
             }
 
@@ -162,7 +256,8 @@ function scan_dir_ordered_data_modified($dir) {
         $files[$file] = filemtime($dir . '/' . $file);
     }
     arsort($files);
-    $files = array_reverse(array_keys($files));
+    $files = array_keys($files);
+
     return ($files) ? $files : false;
 }
 ?>

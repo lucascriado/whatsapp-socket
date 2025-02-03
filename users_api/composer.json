@@ -1,7 +1,7 @@
 {
-    "name": "whatsapp_socket/users_api",
     "require": {
-        "ramsey/uuid": "^4.7",
-        "vlucas/phpdotenv": "^5.6"
+        "ramsey/uuid": "^4.0",
+        "vlucas/phpdotenv": "^5.0",
+        "swoole/ide-helper": "^4.5"
     }
 }
