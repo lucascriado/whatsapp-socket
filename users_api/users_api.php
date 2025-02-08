@@ -15,9 +15,7 @@ $dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
 $PATH = __DIR__;
-include("$PATH/config.php");
-
-$Servidor = new Server($Config['BIND'], $Config['DAEMONS'][6]['BACKUP_SQL']['PORT']);
+$Servidor = include "$PATH/config.php";
 
 $Servidor->set(
     [
@@ -27,222 +25,153 @@ $Servidor->set(
 );
 
 function isAuthenticated($mysqli, $authToken) {
-    echo "[Auth Check] Verificando token: " . ($authToken ?: 'Nenhum token') . "\n";
-    
-    if (empty($authToken)) {
-        echo "[Auth Check] Token vazio - Acesso negado\n";
-        return false;
+    try {
+        $authStmt = $mysqli->prepare("SELECT uuid FROM auth_users WHERE auth_token = ? LIMIT 1");
+        $authStmt->bind_param("s", $authToken);
+        $authStmt->execute();
+        $authStmt->store_result();
+
+        $isAuthenticated = $authStmt->num_rows > 0;
+        $authStmt->close();
+        return $isAuthenticated;
+    } catch (Exception $e) {
+        $response->status(500);
+        $response->end("Erro interno no servidor");
     }
-
-    $authStmt = $mysqli->prepare("SELECT uuid FROM auth_users WHERE auth_token = ? LIMIT 1");
-    $authStmt->bind_param("s", $authToken);
-    $authStmt->execute();
-    $authStmt->store_result();
-
-    $isAuthenticated = $authStmt->num_rows > 0;
-    echo "[Auth Check] Resultado: " . ($isAuthenticated ? "Autenticado" : "Não autenticado") . "\n";
-    
-    $authStmt->close();
-    return $isAuthenticated;
 }
 
 function serveFile($filename, $response) {
-    if (file_exists($filename)) {
+    try {
         $contents = file_get_contents($filename);
         $response->end($contents);
-    } else {
-        $response->status(404);
-        $response->end("File not found");
+    } catch (Exception $e) {
+        $response->status(500);
+        $response->end("Erro interno no servidor");
     }
 }
 
 $Servidor->on('request', function (Request $Request, Response $Response) use ($PATH) {
-    $mysqli = new mysqli($_ENV['DB_HOST'], $_ENV['DB_USER'], $_ENV['DB_PASS'], $_ENV['DB_NAME'], (int)$_ENV['DB_PORT']);
-    if ($mysqli->connect_error) {
-        $Response->status(500);
-        $Response->end("Database connection failed: " . $mysqli->connect_error);
-        return;
-    }
-
     $Response->header('Access-Control-Allow-Origin', '*');
-    $Response->header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    $Response->header('Access-Control-Allow-Methods', 'POST, GET, PUT, OPTIONS');
     $Response->header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-    if ($Request->server['request_method'] === 'OPTIONS') {
-        $Response->status(204);
-        $Response->end();
-        return;
-    }
+    $mysqli = new mysqli($_ENV['DB_HOST'], $_ENV['DB_USER'], $_ENV['DB_PASS'], $_ENV['DB_NAME'], (int)$_ENV['DB_PORT']);
 
     $uri = $Request->server['request_uri'];
 
-    if ($uri === '/dashboard') {
-        echo "\n=== TENTATIVA DE ACESSO AO DASHBOARD ===\n";
-        echo "IP: " . $Request->server['remote_addr'] . "\n";
-        echo "Hora: " . date('Y-m-d H:i:s') . "\n";
-        
-        $authToken = $Request->cookie['auth_token'] ?? '';
-        
-        if (!isAuthenticated($mysqli, $authToken)) {
-            echo "ACESSO NEGADO - Token inválido ou ausente\n";
-            echo "=====================================\n\n";
-            $Response->status(401); 
-            $Response->end("Acesso não autorizado. Faça login primeiro.");
-            return;
-        }
-        
-        echo "ACESSO AUTORIZADO\n";
-        echo "=====================================\n\n";
-        serveFile("$PATH/dashboard.html", $Response);
-        return;
-    }
-
     switch($uri){
-        case '/user/register':
-            if ($Request->server['request_method'] === 'GET') {
-                serveFile("$PATH/register.html", $Response);
-                return;
-            }
-
-            $data = json_decode($Request->getContent(), true);
-            $username = $data['username'] ?? '';
-            $password = $data['password'] ?? '';
-
-            if (empty($username) || empty($password)) {
-                $Response->status(400);
-                $Response->end("Username, and password are required.");
-                return;
-            }
-
-            $uuid = Uuid::uuid4()->toString();
-            $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-            $stmt = $mysqli->prepare("INSERT INTO users (uuid, username, password) VALUES (?, ?, ?)");
-            $stmt->bind_param("sss", $uuid, $username, $hashedPassword);
-
+        case '/register':
             try {
+                if ($Request->server['request_method'] === 'GET') {
+                    serveFile("$PATH/register.html", $Response);
+                    return;
+                } 
+
+                $data = json_decode($Request->getContent(), true);
+                $username = $data['username'] ?? '';
+                $password = $data['password'] ?? '';
+                
+                $uuid = Uuid::uuid4()->toString();
+                $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+                $stmt = $mysqli->prepare("INSERT INTO users (uuid, username, password) VALUES (?, ?, ?)");
+                $stmt->bind_param("sss", $uuid, $username, $hashedPassword);
+
                 if ($stmt->execute()) {
                     $Response->status(201);
-                    $Response->header('Location', '/user/login');
-                    $Response->end("User registered successfully. Redirecting to login...");
                 } else {
                     $Response->status(500);
-                    $Response->end("User registration failed: " . $stmt->error);
+                    $Response->end("Falha ao registrar o usuário: " . $stmt->error);
                 }
-            } catch (mysqli_sql_exception $e) {
-                if ($e->getCode() == 1062) {
-                    $Response->status(409);
-                    $Response->end("Username already in use.");
-                } else {
-                    $Response->status(500);
-                    $Response->end("User registration failed: " . $e->getMessage());
+
+                $stmt->close();
+                break;
+            } catch (Exception $e) {
+                $response->status(500);
+                $response->end("Erro interno no servidor");
+            }
+
+        case '/login':
+            try {
+                if ($Request->server['request_method'] === 'GET') {
+                    serveFile("$PATH/login.html", $Response);
+                    return;
                 }
-            }
 
-            $stmt->close();
-            break;
+                $data = json_decode($Request->getContent(), true);
+                $username = $data['username'] ?? '';
+                $password = $data['password'] ?? '';
 
-        case '/user/login':
-            if ($Request->server['request_method'] === 'GET') {
-                serveFile("$PATH/login.html", $Response);
-                return;
-            }
+                $stmt = $mysqli->prepare("SELECT uuid, password FROM users WHERE username = ?");
+                $stmt->bind_param("s", $username);
+                $stmt->execute();
+                $stmt->store_result();
 
-            $data = json_decode($Request->getContent(), true);
-            $username = $data['username'] ?? '';
-            $password = $data['password'] ?? '';
-
-            if (empty($username) || empty($password)) {
-                $Response->status(400);
-                $Response->end("Username and password are required.");
-                return;
-            }
-
-            $stmt = $mysqli->prepare("SELECT uuid, password FROM users WHERE username = ?");
-            $stmt->bind_param("s", $username);
-            $stmt->execute();
-            $stmt->store_result();
-
-            if ($stmt->num_rows > 0) {
                 $stmt->bind_result($uuid, $hashedPassword);
                 $stmt->fetch();
 
-                if (password_verify($password, $hashedPassword)) {
+                if(password_verify($password, $hashedPassword)) {
                     $authToken = sha1($password . $uuid);
-                    $authStmt = $mysqli->prepare("INSERT INTO auth_users (uuid, auth_token) VALUES (?, ?) ON DUPLICATE KEY UPDATE auth_token = VALUES(auth_token)");
-                    $authStmt->bind_param("ss", $uuid, $authToken);
+                    $remoteIP = $Request->server['remote_addr'];
+                    $remoteOS = php_uname('s');
+                    $pcName = gethostname();
+                    $APPVersion = 1;
+                    $timelogon = time();
+                    $expirylogon = $timelogon + (60 * 60 * 24);
+
+                    $authStmt = $mysqli->prepare("INSERT INTO auth_users (uuid, auth_token, remoteIP, remoteOS, pcName, APPVersion, timelogon, expirylogon) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE auth_token = VALUES(auth_token), remoteIP = VALUES(remoteIP), remoteOS = VALUES(remoteOS), pcName = VALUES(pcName), APPVersion = VALUES(APPVersion), timelogon = VALUES(timelogon), expirylogon = VALUES(expirylogon)");
+                    $authStmt->bind_param("sssssiis", $uuid, $authToken, $remoteIP, $remoteOS, $pcName, $APPVersion, $timelogon, $expirylogon);
                     $authStmt->execute();
                     $authStmt->close();
 
-                    $Response->cookie('auth_token', $authToken, time() + 3600, '/'); // Adiciona o cookie de autenticação
-                    $Response->status(200);                    
+                    $_SESSION['auth_token'] = $authToken;
+                    $_SESSION['username'] = $username;
+                    $_SESSION['uuid'] = $uuid;
+
+                    $Response->status(200);
+
+                    $stmt->close();
                 } else {
                     $Response->status(401);
-                    $Response->end("Invalid username or password.");
+                    $Response->end("Usuário ou senha inválidos.");
                 }
-            } else {
-                $Response->status(401);
-                $Response->end("Invalid username or password.");
+            } catch (Exception $e) {
+                $response->status(500);
+                $response->end("Erro interno no servidor");
             }
-
-            $stmt->close();
             break;
 
-        case '/protected':
-            $authToken = $Request->cookie['auth_token'] ?? '';
+        case '/dashboard':
+            $authToken = $_SESSION['auth_token'] ?? '';
 
-            if (empty($authToken)) {
+            if (isAuthenticated($mysqli, $authToken)) {
+                serveFile("$PATH/dashboard.html", $Response);
+            } else {
                 $Response->status(401);
-                $Response->end("Auth token is required.");
-                return;
+                $Response->header('Location', '/login');
             }
-
-            $authStmt = $mysqli->prepare("SELECT uuid FROM auth_users WHERE auth_token = ? LIMIT 1");
-            $authStmt->bind_param("s", $authToken);
-            $authStmt->execute();
-            $authStmt->store_result();
-
-            if ($authStmt->num_rows === 0) {
-                $Response->status(401);
-                $Response->end("Invalid auth token.");
-                $authStmt->close();
-                return;
-            }
-
-            $authStmt->close();
             break;
 
         case '/logout':
-            $authToken = $Request->cookie['auth_token'] ?? '';
-
-            if (empty($authToken)) {
-                $Response->status(400);
-                $Response->end("Auth token is required.");
-                return;
-            }
-
-            $authStmt = $mysqli->prepare("DELETE FROM auth_users WHERE auth_token = ?");
-            $authStmt->bind_param("s", $authToken);
-            $authStmt->execute();
-
-            if ($authStmt->affected_rows > 0) {
-                $Response->cookie('auth_token', '', time() - 3600, '/');
-                $Response->status(200);
-                $Response->end("Logout successful.");
-            } else {
-                $Response->status(400);
-                $Response->end("Invalid auth token.");
-            }
-
-            $authStmt->close();
+            session_start();
+            session_unset();
+            session_destroy();
+        
+            $Response->status(302);
+            $Response->header('Location', '/login');
+            $Response->end();
             break;
+            
 
         default:
-            $Response->status(404);
-            $Response->end("Not Found");
-            break;
-    }
+            echo "";
 
-    $mysqli->close();
+            $Response->status(302);
+            $Response->header('Location', '/login');
+            $Response->end();
+            break;
+        
+        $mysqli->close();
+    }
 });
 
 $Servidor->start();
