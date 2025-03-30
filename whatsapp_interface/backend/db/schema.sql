@@ -15,7 +15,7 @@ CREATE TABLE mensagens (
   tipo ENUM('enviada', 'recebida', 'audio', 'imagem'),  
   usuario_id VARCHAR(255),           
   data TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  grupo_id VARCHAR(255) DEFAULT NULL;
+  grupo_id VARCHAR(255) DEFAULT NULL,
   midia_url VARCHAR(255)
 );
 
