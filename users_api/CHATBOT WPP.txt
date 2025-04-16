@@ -1,0 +1,5 @@
+- (salvar tabela do banco) key qrcode salvar o qrcode, vinculado grupo id, esse grupo id ter vários usuarios
+- (salvar tabela do banco) usuários autenticados, login crud 
+- ter uma segunraça maior com msgs privadas, para não inteferir em outros usuários, ao grupo_id
+- todas as requisições vao estar associadas a grupo_id, e a um usuário autenticado
+- o banco de dados qrcode -> vai ter o grupoid desse qrcode -> grupoid dos clientes -> hash para criar a pasta do baileys auth
