@@ -9,9 +9,24 @@ import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
 import QRCode from 'qrcode';
-import crypto from 'crypto';
+import crypto, { randomUUID } from 'crypto';
 import { Server } from 'ws';
 
+const token = randomUUID();
+
+// Salvar o token no banco de dados
+(async () => {
+    const conn = await connection;
+    try {
+        await conn.execute(
+            'INSERT INTO whatsapp_conexoes (token, status, pasta_auth) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE status = ?',
+            [token, 'generated', '', 'generated'] // Adicione um valor para `pasta_auth` aqui
+        );
+        console.log('Token salvo no banco de dados:', token);
+    } catch (error) {
+        console.error('Erro ao salvar o token no banco de dados:', error);
+    }
+})();
 const logger: P.Logger | undefined = P({ timestamp: () => `,"time":"${new Date().toJSON()}"` }, P.destination('./wa-logs.txt'))
 logger.level = 'trace'
 
@@ -40,12 +55,12 @@ const notifyQRCodeCleared = () => {
     });
 };
 
-const startSock = async (userId: string, retryCount = 0) => {
-    const authDir = `baileys_auth_info_${userId}`
+const startSock = async (token: string, retryCount = 0) => {
+    const authDir = `baileys_auth_info_${token}`
     const authExists = fs.existsSync(authDir)
 
     if (authExists) {
-        console.log(`Usuário ${userId} já está conectado.`)
+        console.log(`Esse token: ${token} já está conectado.`)
     } else {
         console.log('Conectando no WhatsApp... por favor leia o QR code abaixo.')
     }
@@ -63,7 +78,7 @@ const startSock = async (userId: string, retryCount = 0) => {
         },
     })
 
-    socks[userId] = sock
+    socks[token] = sock
 
     sock.ev.process(
         async (events) => {
@@ -81,20 +96,21 @@ const startSock = async (userId: string, retryCount = 0) => {
                 }
 
                 if (connection === 'open') {
-                    console.log(`Conexão estabelecida para o usuário ${userId}`);
+                    console.log(`Conexão estabelecida para a conexão de token: ${token}`);
                     qrCode = null;
                     notifyQRCodeCleared();
-                    notifyConnectionStatus(userId, 'connected');
+                    notifyConnectionStatus(token, 'connected');
                 }
+                
     
                 if (connection === 'close') {
                     const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
                     if (shouldReconnect && retryCount < 5) {
-                        console.log(`Tentando reconectar para o usuário ${userId}... Tentativa ${retryCount + 1}`)
-                        setTimeout(() => startSock(userId, retryCount + 1), 5000)
+                        console.log(`Tentando reconectar para o token ${token}... Tentativa ${retryCount + 1}`)
+                        setTimeout(() => startSock(token, retryCount + 1), 5000)
                     } else {
-                        console.log(`Conexão fechada para o usuário ${userId}, usuário deslogado ou limite de tentativas atingido`)
-                        notifyConnectionStatus(userId, 'disconnected');
+                        console.log(`Conexão fechada para o token ${token}, conexão deslogada ou limite de tentativas atingido`)
+                        notifyConnectionStatus(token, 'disconnected');
                     }
                 }
             }
@@ -120,8 +136,8 @@ const startSock = async (userId: string, retryCount = 0) => {
             if (text) {
                 console.log(`${fromMe}: ${text}`);
                 await conn.execute(
-                    'INSERT INTO mensagens (participante, voce, texto, tipo, usuario_id, grupo_id) VALUES (?, ?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, text, fromMe, userId, grupoId]
+                    'INSERT INTO mensagens (participante, voce, texto, tipo, usuario_id, conversa_de_grupo) VALUES (?, ?, ?, ?, ?, ?)',
+                    [participant, message.key.fromMe, text, fromMe, token, grupoId]
                 );
             }
     
@@ -140,8 +156,8 @@ const startSock = async (userId: string, retryCount = 0) => {
                 const relativeAudioPath = `audios/${message.key.id}.ogg`;
     
                 await conn.execute(
-                    'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url, grupo_id) VALUES (?, ?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'audio', userId, relativeAudioPath, grupoId]
+                    'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url, conversa_de_grupo) VALUES (?, ?, ?, ?, ?, ?)',
+                    [participant, message.key.fromMe, 'audio', token, relativeAudioPath, grupoId]
                 );
             }
     
@@ -158,11 +174,11 @@ const startSock = async (userId: string, retryCount = 0) => {
                 await fs.promises.writeFile(tempImagePath, imageBuffer);
     
                 const extension = '.jpg';
-                const newPath = await saveImageWithHash(tempImagePath, userId, conn, extension);
+                const newPath = await saveImageWithHash(tempImagePath, token, conn, extension);
     
                 await conn.execute(
-                    'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url, grupo_id) VALUES (?, ?, ?, ?, ?, ?)',
-                    [participant, message.key.fromMe, 'imagem', userId, newPath, grupoId]
+                    'INSERT INTO mensagens (participante, voce, tipo, usuario_id, midia_url, conversa_de_grupo) VALUES (?, ?, ?, ?, ?, ?)',
+                    [participant, message.key.fromMe, 'imagem', token, newPath, grupoId]
                 );
     
                 fs.unlinkSync(tempImagePath);
@@ -178,7 +194,7 @@ const startSock = async (userId: string, retryCount = 0) => {
     return sock;
 }
 
-startSock('3f68955c-99e8-4adb-9368-c3cbdd4fa54c')
+startSock(token)
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -429,11 +445,11 @@ app.get('/numbers', async (req, res) => {
     const conn = await connection;
     try {
         const [rows]: any[] = await conn.query(
-            'SELECT DISTINCT participante, grupo_id FROM mensagens'
+            'SELECT DISTINCT participante, conversa_de_grupo FROM mensagens'
         );
         const numbers = rows.map((row: any) => ({
             participante: row.participante,
-            grupo_id: row.grupo_id
+            conversa_de_grupo: row.conversa_de_grupo
         }));
         res.json(numbers);
     } catch (error) {
@@ -462,13 +478,13 @@ app.get('/messages/:number', async (req, res) => {
 
     if (number.length <= 13 ) {
         const [messages] = await conn.query(
-            'SELECT * FROM mensagens WHERE (participante = ? OR participante = ?) AND grupo_id IS NULL ORDER BY data ASC',
+            'SELECT * FROM mensagens WHERE (participante = ? OR participante = ?) AND conversa_de_grupo IS NULL ORDER BY data ASC',
             [number, `${number}@s.whatsapp.net`]
         );
         res.json(messages);
     } else {
         const [messages] = await conn.query(
-            'SELECT * FROM mensagens WHERE (participante = ? OR participante = ? OR grupo_id = ?) ORDER BY data ASC',
+            'SELECT * FROM mensagens WHERE (participante = ? OR participante = ? OR conversa_de_grupo = ?) ORDER BY data ASC',
             [number, `${number}@s.whatsapp.net`, number]
         );
         res.json(messages);
