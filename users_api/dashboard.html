@@ -39,19 +39,28 @@
                 });
         });
 
-        document.querySelector('button[type="submit"]').addEventListener('click', function() {
-            const token_sessao = "mock_token_123";
-            const grupo_id = "mock_grupo_456";
-
-            axios.post('http://localhost:3000/connect', { // Adicionada a porta 3000
-                token_sessao,
-                grupo_id
-            })
+        document.querySelector('button[type="submit"]').addEventListener('click', function () {
+        axios.get('/user-info')
             .then(response => {
-                console.log("Conexão com WhatsApp:", response.data);
+                const { auth_token, grupo_id, uuid } = response.data;
+                console.log("Token de sessão:", auth_token);
+                console.log("Grupo ID:", grupo_id);
+                console.log("UUID:", uuid);
+
+                axios.post('http://localhost:3000/connect', {
+                    auth_token,
+                    grupo_id,
+                    uuid
+                })
+                .then(response => {
+                    console.log("Conexão com WhatsApp:", response.data);
+                })
+                .catch(error => {
+                    console.error("Erro ao conectar ao WhatsApp:", error);
+                });
             })
             .catch(error => {
-                console.error("Erro ao conectar ao WhatsApp:", error);
+                console.error("Erro ao obter informações do usuário:", error);
             });
         });
     </script>

@@ -42,3 +42,5 @@ CREATE TABLE whatsapp_conexoes (
 );
 
 ALTER TABLE whatsapp_conexoes MODIFY COLUMN pasta_auth VARCHAR(255) DEFAULT NULL;
+ALTER TABLE whatsapp_conexoes MODIFY grupo_id INT DEFAULT 0;
+

@@ -2,7 +2,7 @@ import { Boom } from '@hapi/boom'
 import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, downloadMediaMessage } from '@whiskeysockets/baileys'
 import P from 'pino'
 import readline from 'readline'
-import connection from './db/connection'
+import { connection, connection_users_api } from './db/connection'
 import fs from 'fs'
 import path from 'path'
 import express from 'express';
@@ -14,13 +14,12 @@ import { Server } from 'ws';
 
 const token = randomUUID();
 
-// Salvar o token no banco de dados
 (async () => {
     const conn = await connection;
     try {
         await conn.execute(
             'INSERT INTO whatsapp_conexoes (token, status, pasta_auth) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE status = ?',
-            [token, 'generated', '', 'generated'] // Adicione um valor para `pasta_auth` aqui
+            [token, 'generated', '', 'generated']
         );
         console.log('Token salvo no banco de dados:', token);
     } catch (error) {
@@ -193,8 +192,6 @@ const startSock = async (token: string, retryCount = 0) => {
     });
     return sock;
 }
-
-startSock(token)
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -385,14 +382,19 @@ app.use('/images', express.static(path.join(__dirname, 'path', 'images')));
 app.use('/audios', express.static(path.join(__dirname, 'path', 'audios')));
 
 app.post('/connect', async (req, res) => {
-    const { userId } = req.body;
+    const { token_sessao, grupo_id } = req.body;
+
     try {
-        await startSock(userId);
-        res.status(200).send(`Conectado com sucesso para o usuário ${userId}`);
+        console.log("Grupo ID:", grupo_id);
+        console.log("Token Sessão:", token_sessao);
+
+        await startSock(token_sessao);
+        res.status(200).send(`Conectado com sucesso para o grupo ${grupo_id}`);
     } catch (error) {
-        res.status(500).send(`Erro ao conectar para o usuário ${userId}`);
+        res.status(500).send(`Erro ao conectar para o grupo ${grupo_id}`);
     }
 });
+
 
 app.post('/sendMessage', async (req, res) => {
     const { userId, number, message } = req.body;
