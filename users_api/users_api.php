@@ -41,12 +41,19 @@ function isAuthenticated($mysqli, $authToken, $response) {
 
         $isAuthenticated = $authStmt->num_rows > 0;
         $authStmt->close();
-        return $isAuthenticated;
+
+        if (!$isAuthenticated) {
+            $response->redirect('/login');
+            return false;
+        }
+
+        return true;
     } catch (Exception $e) {
         $response->status(500);
         $response->end("Erro interno no servidor");
     }
 }
+
 
 function getUserPermissions($mysqli, $userId) {
     $permissions = [];
@@ -76,7 +83,7 @@ $Servidor->on('request', function (Request $Request, Response $Response) use ($P
     $Response->header('Access-Control-Allow-Methods', 'POST, GET, PUT, OPTIONS');
     $Response->header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-    $mysqli = new mysqli($_ENV['DB_HOST'], $_ENV['DB_USER'], $_ENV['DB_PASS'], $_ENV['DB_NAME'], (int)$_ENV['DB_PORT']);
+    $mysqli = new mysqli($_ENV['DB_HOST'], $_ENV['DB_USER'], $_ENV['DB_PASSWORD'], $_ENV['DB_NAME'], (int)$_ENV['DB_PORT']);
 
     $uri = $Request->server['request_uri'];
 
@@ -92,12 +99,14 @@ $Servidor->on('request', function (Request $Request, Response $Response) use ($P
                 $username = $data['username'] ?? '';
                 $fullname = $data['fullname'] ?? '';
                 $email    = $data['email'] ?? '';
+                $grupo_id = $data['grupo_id'] ?? '';
                 $password = $data['password'] ?? '';
+
                 
                 $uuid = Uuid::uuid4()->toString();
                 $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-                $stmt = $mysqli->prepare("INSERT INTO users (uuid, username, fullname, email, password) VALUES (?, ?, ?, ?, ?)");
-                $stmt->bind_param("sssss", $uuid, $username, $fullname, $email, $hashedPassword);
+                $stmt = $mysqli->prepare("INSERT INTO users (uuid, username, fullname, email, grupo_id, password) VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param("ssssss", $uuid, $username, $fullname, $email, $grupo_id, $hashedPassword);
 
                 if ($stmt->execute()) {
                     $Response->status(201);
@@ -109,72 +118,77 @@ $Servidor->on('request', function (Request $Request, Response $Response) use ($P
                 $stmt->close();
                 break;
             } catch (Exception $e) {
-                echo $e->getMessage();
-
+                error_log($e->getMessage());
                 $Response->status(500);
                 $Response->end("Erro interno no servidor");
             }
 
         case '/login':
-            try {
-                if ($Request->server['request_method'] === 'GET') {
-                    serveFile("$PATH/login.html", $Response);
-                    return;
-                }
-
-                $data = json_decode($Request->getContent(), true);
-                $username = $data['username'] ?? '';
-                $password = $data['password'] ?? '';
-
-                $stmt = $mysqli->prepare("SELECT id, uuid, password, fullname, username, email FROM users WHERE username = ?");
-                $stmt->bind_param("s", $username);
-                $stmt->execute();
-                $stmt->store_result();
-                $stmt->bind_result($userId, $uuid, $hashedPassword, $fullname, $username, $email);
-                $stmt->fetch();
-
-                if(password_verify($password, $hashedPassword)) {
-                    $authToken = sha1($password . $uuid);
-                    $remoteIP = $Request->server['remote_addr'];
-                    $remoteOS = php_uname('s');
-                    $pcName = gethostname();
-                    $APPVersion = 1;
-                    $timelogon = time();
-                    $expirylogon = $timelogon + (60 * 60 * 24);
-                
-                    $authStmt = $mysqli->prepare("INSERT INTO auth_users (user_id, uuid, auth_token, remoteIP, remoteOS, pcName, APPVersion, timelogon, expirylogon, fullname, email, pessoa_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE auth_token = VALUES(auth_token), remoteIP = VALUES(remoteIP), remoteOS = VALUES(remoteOS), pcName = VALUES(pcName), APPVersion = VALUES(APPVersion), timelogon = VALUES(timelogon), expirylogon = VALUES(expirylogon), fullname = VALUES(fullname), email = VALUES(email), pessoa_id = VALUES(pessoa_id)");
-                    $authStmt->bind_param("isssssiisssi", $userId, $uuid, $authToken, $remoteIP, $remoteOS, $pcName, $APPVersion, $timelogon, $expirylogon, $fullname, $email, $pessoa_id);
-                    $authStmt->execute();
-                    $authStmt->close();
-                
-                    $_SESSION['auth_token'] = $authToken;
-                    $_SESSION['username'] = $username;
-                    $_SESSION['uuid'] = $uuid;
-                    $_SESSION['fullname'] = $fullname;
-                    $_SESSION['email'] = $email;
-                    $_SESSION['user_id'] = $userId;
-                
-                    $Response->status(200);
-                
-                    $stmt->close();
-                } else {
-                    $stmt = $mysqli->prepare("UPDATE auth_users SET blockedsession = blockedsession + 1 WHERE uuid = ?");
-                    $stmt->bind_param("s", $uuid);
+                try {
+                    if ($Request->server['request_method'] === 'GET') {
+                        serveFile("$PATH/login.html", $Response);
+                        return;
+                    }
+            
+                    $data = json_decode($Request->getContent(), true);
+                    $username = $data['username'] ?? '';
+                    $password = $data['password'] ?? '';
+            
+                    $stmt = $mysqli->prepare("SELECT id, uuid, password, fullname, username, email, grupo_id FROM users WHERE username = ?");
+                    $stmt->bind_param("s", $username);
                     $stmt->execute();
-                    $stmt->close();
+                    $stmt->store_result();
+                    $stmt->bind_result($userId, $uuid, $hashedPassword, $fullname, $username, $email, $grupo_id);
+                    $stmt->fetch();
+            
+                    if (password_verify($password, $hashedPassword)) {
+                        $authToken = sha1($password . $uuid);
+                        $remoteIP = $Request->server['remote_addr'];
+                        $remoteOS = php_uname('s');
+                        $pcName = gethostname();
+                        $APPVersion = 1;
+                        $timelogon = time();
+                        $expirylogon = $timelogon + (60 * 60 * 24);
+            
+                        $authStmt = $mysqli->prepare("INSERT INTO auth_users (user_id, uuid, auth_token, grupo_id, remoteIP, remoteOS, pcName, APPVersion, timelogon, expirylogon, fullname, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE auth_token = VALUES(auth_token), remoteIP = VALUES(remoteIP), remoteOS = VALUES(remoteOS), pcName = VALUES(pcName), APPVersion = VALUES(APPVersion), timelogon = VALUES(timelogon), expirylogon = VALUES(expirylogon), fullname = VALUES(fullname), email = VALUES(email)");
+                        $authStmt->bind_param("issssssiisss", $userId, $uuid, $authToken, $grupo_id, $remoteIP, $remoteOS, $pcName, $APPVersion, $timelogon, $expirylogon, $fullname, $email);
 
-                    $Response->status(401);
-                    $Response->end("Usuário ou senha inválidos.");
+                        $authStmt->execute();
+                        $authStmt->close();
+            
+                        $_SESSION['auth_token'] = $authToken;
+                        $_SESSION['username'] = $username;
+                        $_SESSION['uuid'] = $uuid;
+                        $_SESSION['fullname'] = $fullname;
+                        $_SESSION['email'] = $email;
+                        $_SESSION['user_id'] = $userId;
+                        $_SESSION['grupo_id'] = $grupo_id;
+            
+                        $Response->status(200);
+                        $Response->header('Content-Type', 'application/json');
+                        $Response->end(json_encode([
+                            "message" => "Login bem-sucedido",
+                            "auth_token" => $authToken,
+                            "grupo_id" => $grupo_id
+                        ]));
+            
+                        $stmt->close();
+                    } else {
+                        $stmt = $mysqli->prepare("UPDATE auth_users SET blockedsession = blockedsession + 1 WHERE uuid = ?");
+                        $stmt->bind_param("s", $uuid);
+                        $stmt->execute();
+                        $stmt->close();
+            
+                        $Response->status(401);
+                        $Response->end("Usuário ou senha inválidos.");
+                    }
+                } catch (Exception $e) {
+                    error_log($e->getMessage());
+                    $Response->status(500);
+                    $Response->end("Erro interno no servidor");
                 }
-
-            } catch (Exception $e) {
-                echo $e->getMessage();
-
-                $Response->status(500);
-                $Response->end("Erro interno no servidor");
-            }
-            break;
-
+                break;
+        
         case '/dashboard':
             $authToken = $_SESSION['auth_token'] ?? '';
 
@@ -194,6 +208,8 @@ $Servidor->on('request', function (Request $Request, Response $Response) use ($P
                 $permissions = getUserPermissions($mysqli, $userId);
                 $userInfo = [
                     "uuid" => $_SESSION['uuid'] ?? '',
+                    "auth_token" => $_SESSION['auth_token'] ?? '',
+                    "grupo_id" => $_SESSION['grupo_id'] ?? '',
                     "username" => $_SESSION['username'] ?? '',
                     "fullname" => $_SESSION['fullname'] ?? '',
                     "email" => $_SESSION['email'] ?? '',

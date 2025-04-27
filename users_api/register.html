@@ -23,6 +23,10 @@
                 <input type="email" class="form-control" id="email" required>
             </div>
             <div class="form-group">
+                <label for="grupo_id">Grupo ID</label>
+                <input type="text" class="form-control" id="grupo_id" required>
+            </div>
+            <div class="form-group">
                 <label for="password">Password</label>
                 <input type="password" class="form-control" id="password" required>
             </div>
@@ -38,12 +42,13 @@
             const fullname = document.getElementById('fullname').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
-
+            const grupo_id = document.getElementById('grupo_id').value;
 
             axios.post('/register', {
                 username: username,
                 fullname: fullname,
                 email: email,
+                grupo_id: grupo_id,
                 password: password
             }, {
                 headers: {

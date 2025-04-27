@@ -1,3 +1,5 @@
+DROP DATABASE users_api;
+
 CREATE DATABASE users_api;
 
 GRANT ALL PRIVILEGES ON users_api.* TO 'admin'@'localhost';
@@ -7,31 +9,34 @@ USE users_api;
 
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    uuid VARCHAR(36) NOT NULL,
+    uuid VARCHAR(36) NOT NULL UNIQUE, -- Adicionado UNIQUE para garantir unicidade do UUID
     username VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
-    uuid VARCHAR(36) NOT NULL 
+    fullname VARCHAR(255) NOT NULL, -- Adicionado diretamente na definição da tabela
+    email VARCHAR(255) NOT NULL UNIQUE, -- Adicionado UNIQUE para evitar duplicidade de e-mails
+    grupo_id INT DEFAULT NULL -- Permitir NULL caso o grupo não seja obrigatório
 );
 
 CREATE TABLE auth_users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
+    user_id INT NOT NULL, -- Relacionado à tabela users
     uuid VARCHAR(50) NOT NULL,
-    auth_token VARCHAR(255) NOT NULL,
-    fullName VARCHAR(150) COLLATE utf8mb4_general_ci,
-    email VARCHAR(200) COLLATE utf8mb4_general_ci,
-    pessoa_id INT,
-    client_id INT,
-    owner_pessoa_id INT,
-    remoteOS VARCHAR(50),
-    remoteIP VARCHAR(16),
-    pcName VARCHAR(50),
-    APPVersion INT,
-    timelogon INT,
-    expirylogon INT,
-    blockedsession INT,
-    UNIQUE (auth_token),
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    auth_token VARCHAR(255) NOT NULL UNIQUE, -- Garantir unicidade do token
+    grupo_id VARCHAR(255) DEFAULT NULL, -- Permitir NULL caso o grupo não seja obrigatório
+    fullName VARCHAR(150) COLLATE utf8mb4_general_ci DEFAULT NULL, -- Permitir NULL
+    email VARCHAR(200) COLLATE utf8mb4_general_ci DEFAULT NULL, -- Permitir NULL
+    pessoa_id INT DEFAULT NULL,
+    client_id INT DEFAULT NULL,
+    owner_pessoa_id INT DEFAULT NULL,
+    remoteOS VARCHAR(50) DEFAULT NULL,
+    remoteIP VARCHAR(16) DEFAULT NULL,
+    pcName VARCHAR(50) DEFAULT NULL,
+    APPVersion INT DEFAULT NULL,
+    timelogon INT DEFAULT NULL,
+    expirylogon INT DEFAULT NULL,
+    blockedsession INT DEFAULT 0, -- Inicializar com 0 para evitar NULL
+    UNIQUE (auth_token), -- Garantir unicidade do token
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE -- Garantir integridade referencial
 );
 
 CREATE TABLE permissions (
@@ -76,6 +81,8 @@ INSERT INTO permissions (name, description) VALUES
 ('read_tools_management', 'Permite leitura de informações de ferramentas de escritório'),
 ('edit_tools_management', 'Permite edição de informações de ferramentas de escritório');
 
-INSERT INTO user_permissions (user_id, permission_id) VALUES
-(1, 1), (1, 2), (1, 3), -- Permissões para o usuário com ID 1
-(2, 4), (2, 5), (2, 6); -- Permissões para o usuário com ID 2
+ALTER TABLE users ADD COLUMN fullname VARCHAR(255) NOT NULL AFTER username;
+
+ALTER TABLE users ADD COLUMN email VARCHAR(255) NOT NULL AFTER fullname;
+
+ALTER TABLE users ADD COLUMN grupo_id INT AFTER email;

@@ -1,15 +1,24 @@
 <?php return array(
     'root' => array(
-        'name' => 'whatsapp_socket/users_api',
+        'name' => '__root__',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => 'fc2a338b8469ceeb085025ef82d87dbb4033b21f',
+        'reference' => '482641dd098a0cc4c7bab137c25905759127d0c6',
         'type' => 'library',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
         'dev' => true,
     ),
     'versions' => array(
+        '__root__' => array(
+            'pretty_version' => 'dev-main',
+            'version' => 'dev-main',
+            'reference' => '482641dd098a0cc4c7bab137c25905759127d0c6',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../../',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
         'brick/math' => array(
             'pretty_version' => '0.12.1',
             'version' => '0.12.1.0',
@@ -61,6 +70,15 @@
                 0 => '4.7.6',
             ),
         ),
+        'swoole/ide-helper' => array(
+            'pretty_version' => '4.8.13',
+            'version' => '4.8.13.0',
+            'reference' => 'd100c446b2e3d56430cbcab5dc3fa20a9f35c4ef',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../swoole/ide-helper',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
         'symfony/polyfill-ctype' => array(
             'pretty_version' => 'v1.31.0',
             'version' => '1.31.0.0',
@@ -94,15 +112,6 @@
             'reference' => 'a59a13791077fe3d44f90e7133eb68e7d22eaff2',
             'type' => 'library',
             'install_path' => __DIR__ . '/../vlucas/phpdotenv',
-            'aliases' => array(),
-            'dev_requirement' => false,
-        ),
-        'whatsapp_socket/users_api' => array(
-            'pretty_version' => 'dev-main',
-            'version' => 'dev-main',
-            'reference' => 'fc2a338b8469ceeb085025ef82d87dbb4033b21f',
-            'type' => 'library',
-            'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
             'dev_requirement' => false,
         ),
