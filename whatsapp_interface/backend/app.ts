@@ -11,6 +11,7 @@ import cors from 'cors';
 import QRCode from 'qrcode';
 import crypto, { randomUUID } from 'crypto';
 import { Server } from 'ws';
+import { RowDataPacket } from 'mysql2';
 
 const token = randomUUID();
 
@@ -382,18 +383,49 @@ app.use('/images', express.static(path.join(__dirname, 'path', 'images')));
 app.use('/audios', express.static(path.join(__dirname, 'path', 'audios')));
 
 app.post('/connect', async (req, res) => {
-    const { token_sessao, grupo_id } = req.body;
+    const { grupo_id, uuid, auth_token } = req.body;
+    const conn = await connection_users_api;
 
     try {
         console.log("Grupo ID:", grupo_id);
-        console.log("Token Sessão:", token_sessao);
+        console.log("UUID:", uuid);
+        console.log("Token random de auth_users:", auth_token);
 
-        await startSock(token_sessao);
+        const [rows] = await conn.execute<RowDataPacket[]>(
+            'SELECT * FROM auth_users WHERE uuid = ?',
+            [uuid]
+        );
+
+        if (rows.length === 0) {
+            return console.log('UUID inválido');
+        }
+
+        const connWa = await connection;
+        
+        console.log(`Executando UPDATE com grupo_id ${grupo_id}`);
+        
+        await connWa.execute(
+            'UPDATE whatsapp_conexoes SET grupo_id = ? WHERE token = ?',
+            [grupo_id, token]
+        );
+
+        const [updatedRows] = await connWa.execute<RowDataPacket[]>(
+            'SELECT * FROM whatsapp_conexoes WHERE token = ?',
+            [token]
+        );
+        
+        console.log('Linha atualizada no banco:', updatedRows);
+
+        await startSock(token);
         res.status(200).send(`Conectado com sucesso para o grupo ${grupo_id}`);
     } catch (error) {
+        console.error(error);
         res.status(500).send(`Erro ao conectar para o grupo ${grupo_id}`);
     }
 });
+
+
+
 
 
 app.post('/sendMessage', async (req, res) => {

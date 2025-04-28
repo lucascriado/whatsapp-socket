@@ -1,3 +1,5 @@
+DROP DATABASE whatsapp;
+
 CREATE DATABASE whatsapp;
 CREATE USER 'admin'@'localhost' IDENTIFIED BY 'password';
 GRANT ALL ON whatsapp.* TO 'admin'@'localhost';
