@@ -55,6 +55,7 @@ const notifyQRCodeCleared = () => {
     });
 };
 
+
 const startSock = async (token: string, retryCount = 0) => {
     const authDir = `baileys_auth_info_${token}`
     const authExists = fs.existsSync(authDir)
@@ -385,6 +386,7 @@ app.use('/audios', express.static(path.join(__dirname, 'path', 'audios')));
 app.post('/connect', async (req, res) => {
     const { grupo_id, uuid, auth_token } = req.body;
     const conn = await connection_users_api;
+    const token = randomUUID();
 
     try {
         console.log("Grupo ID:", grupo_id);
@@ -423,10 +425,6 @@ app.post('/connect', async (req, res) => {
         res.status(500).send(`Erro ao conectar para o grupo ${grupo_id}`);
     }
 });
-
-
-
-
 
 app.post('/sendMessage', async (req, res) => {
     const { userId, number, message } = req.body;

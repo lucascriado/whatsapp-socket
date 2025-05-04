@@ -9,22 +9,22 @@ USE users_api;
 
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    uuid VARCHAR(36) NOT NULL UNIQUE, -- Adicionado UNIQUE para garantir unicidade do UUID
-    username VARCHAR(255) NOT NULL UNIQUE,
+    uuid VARCHAR(36) NOT NULL UNIQUE,        -- UUID único
+    username VARCHAR(255) NOT NULL UNIQUE,   -- Nome de usuário único
     password VARCHAR(255) NOT NULL,
-    fullname VARCHAR(255) NOT NULL, -- Adicionado diretamente na definição da tabela
-    email VARCHAR(255) NOT NULL UNIQUE, -- Adicionado UNIQUE para evitar duplicidade de e-mails
-    grupo_id INT DEFAULT NULL -- Permitir NULL caso o grupo não seja obrigatório
+    fullname VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,      -- E-mail único
+    grupo_id INT DEFAULT NULL                -- Grupo opcional
 );
 
 CREATE TABLE auth_users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL, -- Relacionado à tabela users
-    uuid VARCHAR(50) NOT NULL,
-    auth_token VARCHAR(255) NOT NULL UNIQUE, -- Garantir unicidade do token
-    grupo_id VARCHAR(255) DEFAULT NULL, -- Permitir NULL caso o grupo não seja obrigatório
-    fullName VARCHAR(150) COLLATE utf8mb4_general_ci DEFAULT NULL, -- Permitir NULL
-    email VARCHAR(200) COLLATE utf8mb4_general_ci DEFAULT NULL, -- Permitir NULL
+    user_id INT NOT NULL,                        -- Chave estrangeira para users(id)
+    uuid VARCHAR(36) NOT NULL UNIQUE,            -- UUID único para controle de duplicidade
+    auth_token CHAR(64) NOT NULL UNIQUE,         -- Token único de autenticação (SHA-1 ou similar)
+    grupo_id VARCHAR(255) DEFAULT NULL,
+    fullName VARCHAR(150) COLLATE utf8mb4_general_ci DEFAULT NULL,
+    email VARCHAR(200) COLLATE utf8mb4_general_ci DEFAULT NULL,
     pessoa_id INT DEFAULT NULL,
     client_id INT DEFAULT NULL,
     owner_pessoa_id INT DEFAULT NULL,
@@ -34,9 +34,8 @@ CREATE TABLE auth_users (
     APPVersion INT DEFAULT NULL,
     timelogon INT DEFAULT NULL,
     expirylogon INT DEFAULT NULL,
-    blockedsession INT DEFAULT 0, -- Inicializar com 0 para evitar NULL
-    UNIQUE (auth_token), -- Garantir unicidade do token
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE -- Garantir integridade referencial
+    blockedsession INT DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE permissions (
@@ -81,8 +80,3 @@ INSERT INTO permissions (name, description) VALUES
 ('read_tools_management', 'Permite leitura de informações de ferramentas de escritório'),
 ('edit_tools_management', 'Permite edição de informações de ferramentas de escritório');
 
-ALTER TABLE users ADD COLUMN fullname VARCHAR(255) NOT NULL AFTER username;
-
-ALTER TABLE users ADD COLUMN email VARCHAR(255) NOT NULL AFTER fullname;
-
-ALTER TABLE users ADD COLUMN grupo_id INT AFTER email;

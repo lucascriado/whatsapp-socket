@@ -142,7 +142,7 @@ $Servidor->on('request', function (Request $Request, Response $Response) use ($P
                     $stmt->fetch();
             
                     if (password_verify($password, $hashedPassword)) {
-                        $authToken = sha1($password . $uuid);
+                        $authToken = bin2hex(random_bytes(32));
                         $remoteIP = $Request->server['remote_addr'];
                         $remoteOS = php_uname('s');
                         $pcName = gethostname();
