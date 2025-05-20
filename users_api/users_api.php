@@ -189,6 +189,7 @@ $Servidor->on('request', function (Request $Request, Response $Response) use ($P
                 }
                 break;
         
+        
         case '/dashboard':
             $authToken = $_SESSION['auth_token'] ?? '';
 
@@ -200,7 +201,80 @@ $Servidor->on('request', function (Request $Request, Response $Response) use ($P
             }
             break;
         
-        case '/user-info':
+            case '/add-employee':
+                try {
+                    if ($Request->server['request_method'] !== 'POST') {
+                        $Response->status(405);
+                        $Response->end("Método não permitido");
+                        break;
+                    }
+
+                    $authToken = $_SESSION['auth_token'] ?? '';
+                    if (!isAuthenticated($mysqli, $authToken, $Response)) {
+                        $Response->status(401);
+                        $Response->end("Não autenticado");
+                        break;
+                    }
+
+                    $cliente_id = $_SESSION['user_id'] ?? null;
+
+                    if (!$cliente_id) {
+                        $Response->status(400);
+                        $Response->end("ID do cliente ausente.");
+                        break;
+                    }
+
+                    $data = json_decode($Request->getContent(), true);
+                    $fullname = trim($data['fullname'] ?? '');
+                    $email = trim($data['email'] ?? '');
+                    $password = trim($data['password'] ?? '');
+                    $grupo_id = (int)($data['grupo_id'] ?? 0);
+
+                    if (!$fullname || !$email || !$grupo_id) {
+                        $Response->status(400);
+                        $Response->end("Todos os campos são obrigatórios.");
+                        break;
+                    }
+
+                    // (Opcional, mas recomendável) Validar se grupo_id pertence ao cliente:
+                    $stmtValidaGrupo = $mysqli->prepare("SELECT id FROM users WHERE id = ? AND grupo_id = ?");
+                    $stmtValidaGrupo->bind_param("ii", $cliente_id, $grupo_id);
+                    $stmtValidaGrupo->execute();
+                    $stmtValidaGrupo->store_result();
+
+                    if ($stmtValidaGrupo->num_rows === 0) {
+                        $Response->status(403);
+                        $Response->end("Grupo inválido ou não pertence ao cliente.");
+                        $stmtValidaGrupo->close();
+                        break;
+                    }
+
+                    $stmtValidaGrupo->close();
+
+                    $uuid = Uuid::uuid4()->toString();
+                    $hashedPassword = $password ? password_hash($password, PASSWORD_BCRYPT) : null;
+
+                    $stmt = $mysqli->prepare("INSERT INTO users_employees (cliente_id, grupo_id, uuid, fullname, email, password) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt->bind_param("iissss", $cliente_id, $grupo_id, $uuid, $fullname, $email, $hashedPassword);
+
+                    if ($stmt->execute()) {
+                        $Response->status(201);
+                        $Response->end("Colaborador adicionado com sucesso");
+                    } else {
+                        $Response->status(500);
+                        $Response->end("Erro ao adicionar colaborador: " . $stmt->error);
+                    }
+
+                    $stmt->close();
+                } catch (Exception $e) {
+                    error_log($e->getMessage());
+                    $Response->status(500);
+                    $Response->end("Erro interno no servidor");
+                }
+                break;
+
+        
+            case '/user-info':
             $authToken = $_SESSION['auth_token'] ?? '';
         
             if (isAuthenticated($mysqli, $authToken, $Response)) {

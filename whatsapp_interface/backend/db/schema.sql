@@ -1,12 +1,12 @@
-DROP DATABASE whatsapp;
+DROP DATABASE users_api;
 
-CREATE DATABASE whatsapp;
+CREATE DATABASE users_api;
 CREATE USER 'admin'@'localhost' IDENTIFIED BY 'password';
-GRANT ALL ON whatsapp.* TO 'admin'@'localhost';
+GRANT ALL ON users_api.* TO 'admin'@'localhost';
 FLUSH PRIVILEGES;
 ALTER USER 'admin'@'localhost' IDENTIFIED WITH mysql_native_password BY 'password';
 
-USE whatsapp;
+USE users_api;
 
 CREATE TABLE imagens (
     id INT AUTO_INCREMENT PRIMARY KEY,

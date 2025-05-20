@@ -385,7 +385,7 @@ app.use('/audios', express.static(path.join(__dirname, 'path', 'audios')));
 
 app.post('/connect', async (req, res) => {
     const { grupo_id, uuid, auth_token } = req.body;
-    const conn = await connection_users_api;
+    const conn = await connection;
     const token = randomUUID();
 
     try {

@@ -17,6 +17,19 @@ CREATE TABLE users (
     grupo_id INT DEFAULT NULL                -- Grupo opcional
 );
 
+CREATE TABLE users_employees (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    cliente_id INT NOT NULL,                          -- FK para o cliente (users)
+    grupo_id INT NOT NULL,                            -- herdado do cliente
+    uuid VARCHAR(36) NOT NULL UNIQUE,                 -- para identificador global
+    fullname VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) DEFAULT NULL,               -- se o funcionário precisar logar
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cliente_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+
 CREATE TABLE auth_users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,                        -- Chave estrangeira para users(id)
@@ -79,4 +92,42 @@ INSERT INTO permissions (name, description) VALUES
 ('remove_firewall_management', 'Permite remoção de informações de ferramentas de escritório'),
 ('read_tools_management', 'Permite leitura de informações de ferramentas de escritório'),
 ('edit_tools_management', 'Permite edição de informações de ferramentas de escritório');
+
+CREATE TABLE imagens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    usuario_id VARCHAR(255),
+    hash VARCHAR(40),
+    midia_url VARCHAR(255)
+);
+  
+CREATE TABLE mensagens (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  participante VARCHAR(255),
+  voce BOOLEAN,
+  texto TEXT,
+  tipo ENUM('enviada', 'recebida', 'audio', 'imagem'),  
+  usuario_id VARCHAR(255),           
+  data TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  conversa_de_grupo VARCHAR(255) DEFAULT NULL,
+  midia_url VARCHAR(255)
+);
+
+CREATE TABLE audios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    usuario_id VARCHAR(255),
+    hash VARCHAR(40),
+    midia_url VARCHAR(255)
+);
+
+CREATE TABLE whatsapp_conexoes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    grupo_id VARCHAR(255) NOT NULL,
+    pasta_auth VARCHAR(255) NOT NULL,
+    status VARCHAR(50),
+    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE whatsapp_conexoes MODIFY COLUMN pasta_auth VARCHAR(255) DEFAULT NULL;
+ALTER TABLE whatsapp_conexoes MODIFY grupo_id INT DEFAULT 0;
 
